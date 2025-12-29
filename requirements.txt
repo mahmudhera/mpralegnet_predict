@@ -1,0 +1,3 @@
+torch
+# Optional for FASTA parsing (scripts fall back to a tiny parser if missing)
+biopython
