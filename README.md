@@ -1,10 +1,10 @@
 # Minimal MPRA-LegNet (LegNet) loader, predictor, and fine-tuner
 
-This repo is a **small, dependency-light** extraction of the pieces you need to:
+This repo is a **small, dependency-light** extraction of the pieces needed to:
 
 - **load** a stored MPRA-LegNet / LegNet model (including upstream `human_legnet` Lightning `.ckpt` files)
 - **run predictions** for many DNA sequences
-- **fine-tune** a loaded model on your own regression dataset using **SGD, Adam, or AdamW** with a **train/val/test split** (val for model selection, test for final evaluation)
+- **fine-tune** a loaded model on new dataset using **SGD, Adam, or AdamW** with a **train/val/test split** (val for model selection, test for final evaluation)
 
 It intentionally avoids PyTorch Lightning, pandas, numpy, etc. Only PyTorch is required; Biopython is optionally used for FASTA parsing.
 
@@ -26,13 +26,13 @@ It intentionally avoids PyTorch Lightning, pandas, numpy, etc. Only PyTorch is r
 - **Reverse-complement augmentation**: train on forward sequences plus their reverse complements.
 - **Reverse channel**: optionally add a 5th input channel indicating orientation (all-0 for forward, all-1 for reverse).
 
-This repo preserves these behaviors so you can load upstream checkpoints.
+This repo preserves these behaviors.
 
 ## Predict with a pretrained model
 
-Choose one path based on what you have:
+Choose one path based on what we have:
 
-**Path A: You have an upstream `human_legnet` model directory**
+**Path A: We have an upstream `human_legnet` model directory**
 
 Contents expected in `/path/to/model_dir`:
 
@@ -51,7 +51,7 @@ python scripts/predict.py \
 
 What happens: the script reads `config.json`, auto-picks a checkpoint, runs batched predictions, and (by default) averages forward and reverse-complement predictions if `reverse_augment=true` in the config.
 
-**Path B: You have explicit checkpoint + config paths**
+**Path B: We have explicit checkpoint + config paths**
 
 ```bash
 python scripts/predict.py \
@@ -68,7 +68,7 @@ python scripts/predict.py \
 - `table`: `.tsv` or `.csv` with header row; sequence column defaults to `sequence`
 - `text`: any other extension → one sequence per line
 
-## Fine-tune on your regression data
+## Fine-tune on new data
 
 Goal: fine-tune for **200 bp sequences** with **continuous targets**.
 
