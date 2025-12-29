@@ -4,45 +4,42 @@ This repo is a **small, dependency-light** extraction of the pieces you need to:
 
 - **load** a stored MPRA-LegNet / LegNet model (including upstream `human_legnet` Lightning `.ckpt` files)
 - **run predictions** for many DNA sequences
-- **fine-tune** a loaded model on your own regression dataset using **SGD, Adam, or AdamW**
-  with a **train/val/test split** (val for model selection, test for final evaluation).
+- **fine-tune** a loaded model on your own regression dataset using **SGD, Adam, or AdamW** with a **train/val/test split** (val for model selection, test for final evaluation)
 
-It intentionally avoids PyTorch Lightning, pandas, numpy, etc. (Only PyTorch is required; Biopython is *optionally* used for FASTA parsing.)
+It intentionally avoids PyTorch Lightning, pandas, numpy, etc. Only PyTorch is required; Biopython is optionally used for FASTA parsing.
 
-## What “reverse augmentation” / “reverse channel” means
+## Quick start
 
-Upstream MPRA-LegNet uses two related options:
+1) Ensure Python 3.9+ and PyTorch are installed. GPU is optional but recommended for speed.
+2) From the repo root, explore the CLI help:
+   ```bash
+   python scripts/predict.py --help
+   python scripts/finetune.py --help
+   ```
+3) (Optional) install in editable mode:
+   ```bash
+   pip install -e .
+   ```
+
+## Concepts: reverse augmentation and reverse channel
 
 - **Reverse-complement augmentation**: train on forward sequences plus their reverse complements.
-- **Reverse channel**: optionally add a **5th input channel** indicating orientation (all-0 for forward, all-1 for reverse).
+- **Reverse channel**: optionally add a 5th input channel indicating orientation (all-0 for forward, all-1 for reverse).
 
 This repo preserves these behaviors so you can load upstream checkpoints.
 
-## Install (optional)
-
-You can run the scripts without installation. From the repo root:
-
-```bash
-python scripts/predict.py --help
-python scripts/finetune.py --help
-```
-
-If you prefer installation:
-
-```bash
-pip install -e .
-```
-
 ## Predict with a pretrained model
 
-### A) If you have an upstream `human_legnet` model directory
+Choose one path based on what you have:
 
-Upstream training produces a directory with:
+**Path A: You have an upstream `human_legnet` model directory**
+
+Contents expected in `/path/to/model_dir`:
 
 - `config.json`
 - one or more `.ckpt` files (often named like `pearson-epoch=..-val_pearson=..ckpt`)
 
-Run:
+Run predictions:
 
 ```bash
 python scripts/predict.py \
@@ -52,14 +49,9 @@ python scripts/predict.py \
   --device cuda:0
 ```
 
-The script will:
+What happens: the script reads `config.json`, auto-picks a checkpoint, runs batched predictions, and (by default) averages forward and reverse-complement predictions if `reverse_augment=true` in the config.
 
-- read `/path/to/model_dir/config.json`
-- auto-pick a checkpoint under that directory
-- run batched GPU predictions
-- (by default) average forward and reverse-complement predictions if `reverse_augment=true` in the config.
-
-### B) If you have explicit checkpoint + config paths
+**Path B: You have explicit checkpoint + config paths**
 
 ```bash
 python scripts/predict.py \
@@ -70,56 +62,50 @@ python scripts/predict.py \
   --device cuda:0
 ```
 
-### Supported input formats
+**Supported input formats**
 
-- **FASTA**: `.fa`, `.fasta`, `.fna`
-- **Table**: `.tsv` or `.csv` with a header row and a sequence column (default name: `sequence`)
-- **Text**: any other extension → one sequence per line
+- `fasta`: `.fa`, `.fasta`, `.fna`
+- `table`: `.tsv` or `.csv` with header row; sequence column defaults to `sequence`
+- `text`: any other extension → one sequence per line
 
 ## Fine-tune on your regression data
 
-Your dataset: **200 bp sequences** with **continuous targets**.
+Goal: fine-tune for **200 bp sequences** with **continuous targets**.
 
-Prepare a TSV (or CSV) with header, e.g.:
+1) Prepare data (`.tsv` or `.csv` with header):
+   ```text
+   sequence\ttarget
+   ACGT...\t0.12
+   TTGA...\t-1.03
+   ...
+   ```
+2) Run fine-tuning:
+   ```bash
+   python scripts/finetune.py \
+     --model_dir /path/to/pretrained_model_dir \
+     --data my_train_data.tsv --seq_col sequence --target_col target \
+     --out_dir out_finetune \
+     --device cuda:0 \
+     --optimizer adamw --lr 1e-4 --weight_decay 1e-3 \
+     --epochs 20 --batch_size 256
+   ```
+3) Inspect outputs in `out_finetune/`:
+   - `best_legnet.pt` – self-contained checkpoint (no Lightning needed)
+   - `metrics.json` – test MSE and Pearson summary
+4) Predict with the fine-tuned checkpoint:
+   ```bash
+   python scripts/predict.py \
+     --checkpoint out_finetune/best_legnet.pt \
+     --input my_sequences.fasta \
+     --output preds_finetuned.tsv \
+     --device cuda:0
+   ```
 
-```text
-sequence\ttarget
-ACGT...\t0.12
-TTGA...\t-1.03
-...
-```
+## Tips
 
-Run fine-tuning:
-
-```bash
-python scripts/finetune.py \
-  --model_dir /path/to/pretrained_model_dir \
-  --data my_train_data.tsv --seq_col sequence --target_col target \
-  --out_dir out_finetune \
-  --device cuda:0 \
-  --optimizer adamw --lr 1e-4 --weight_decay 1e-3 \
-  --epochs 20 --batch_size 256
-```
-
-Outputs:
-
-- `out_finetune/best_legnet.pt` – a **self-contained** checkpoint (no Lightning needed to reload)
-- `out_finetune/metrics.json` – a small summary with test MSE and Pearson
-
-To predict with the fine-tuned checkpoint:
-
-```bash
-python scripts/predict.py \
-  --checkpoint out_finetune/best_legnet.pt \
-  --input my_sequences.fasta \
-  --output preds_finetuned.tsv \
-  --device cuda:0
-```
-
-## Notes
-
-- If your sequences are not all the same length, use `--seq_len 200` to pad/truncate.
-- By default, `--rc_augment` (training) and `--rc_average` (val/test) follow the upstream config’s `reverse_augment` flag.
+- If sequences vary in length, add `--seq_len 200` to pad/truncate.
+- `--rc_augment` (train) and `--rc_average` (val/test) default to the upstream config’s `reverse_augment` flag.
+- Start with a small subset to verify I/O before long runs.
 
 ## License
 
