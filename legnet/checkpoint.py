@@ -90,7 +90,7 @@ def load_model(
         meta is a dict with some loading diagnostics.
     """
     checkpoint_path = Path(checkpoint_path)
-    obj = torch.load(checkpoint_path, map_location=map_location)
+    obj = torch.load(checkpoint_path, map_location=map_location, weights_only=False)
 
     # If it's a repo-produced checkpoint, allow overriding config from inside.
     if isinstance(obj, dict) and "config" in obj and isinstance(obj["config"], dict):
