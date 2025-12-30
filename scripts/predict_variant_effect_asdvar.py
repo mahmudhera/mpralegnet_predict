@@ -92,8 +92,8 @@ def main() -> None:
 
     # Decide sequence length
     seq_len = config.seq_len
-
     device = torch.device(args.device)
+    add_reverse_channel = args.rc_average or config.use_rev_channel
 
     # parse input TSV
     df = pd.read_csv(input_path, sep="\t")
