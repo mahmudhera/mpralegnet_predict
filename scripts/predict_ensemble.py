@@ -255,12 +255,15 @@ def main() -> None:
     if not ckpt_paths:
         raise SystemExit(f"No .ckpt files found in: {ckpt_dir}")
 
-    config_path = resolve_config_path(ckpt_dir)
+    # config path is the .json inside the checkpoint directory
+    config_path = ckpt_dir / "config.json"
+    if not config_path.exists():
+        raise SystemExit(f"Could not find config.json in checkpoint directory: {ckpt_dir}")
 
-    config: Optional[LegNetConfig] = None
-
-    if config_path is not None:
+    try:
         config = LegNetConfig.from_json(config_path)
+    except Exception as e:
+        raise SystemExit(f"Error loading config from {config_path}: {e}")
 
     # If user didn't provide config (possible for repo-native .pt), try to load from checkpoint.
     if config is None:
