@@ -297,89 +297,89 @@ def main() -> None:
     else:
         ids, seqs = _read_txt(input_path)
 
-add_reverse_channel = bool(config.use_reverse_channel)
+    add_reverse_channel = bool(config.use_reverse_channel)
 
-ds_forw = SequenceOnlyDataset(ids, seqs, seq_len=seq_len, reverse=False, add_reverse_channel=add_reverse_channel)
-loader_forw = DataLoader(
-    ds_forw,
-    batch_size=args.batch_size,
-    shuffle=False,
-    num_workers=args.num_workers,
-    pin_memory=(device.type == "cuda"),
-)
-
-loader_rev = None
-if args.rc_average:
-    ds_rev = SequenceOnlyDataset(ids, seqs, seq_len=seq_len, reverse=True, add_reverse_channel=add_reverse_channel)
-    loader_rev = DataLoader(
-        ds_rev,
+    ds_forw = SequenceOnlyDataset(ids, seqs, seq_len=seq_len, reverse=False, add_reverse_channel=add_reverse_channel)
+    loader_forw = DataLoader(
+        ds_forw,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=(device.type == "cuda"),
     )
 
-preds_sum: Optional[torch.Tensor] = None
-ref_ids: Optional[List[str]] = None
-
-for ckpt_path in ckpt_paths:
-    model, meta = load_model(ckpt_path, config, map_location="cpu", device=device, strict=False)
-
-    out_ids, p_forw = _predict_loader(model, loader_forw, device=device, amp=args.amp)
-
+    loader_rev = None
     if args.rc_average:
-        assert loader_rev is not None
-        out_ids2, p_rev = _predict_loader(model, loader_rev, device=device, amp=args.amp)
-        if out_ids2 != out_ids:
-            raise RuntimeError("Internal error: ID order mismatch between forward and reverse loaders")
-        p = (p_forw + p_rev) / 2.0
-    else:
-        p = p_forw
+        ds_rev = SequenceOnlyDataset(ids, seqs, seq_len=seq_len, reverse=True, add_reverse_channel=add_reverse_channel)
+        loader_rev = DataLoader(
+            ds_rev,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=(device.type == "cuda"),
+        )
 
-    if ref_ids is None:
-        ref_ids = out_ids
-    elif out_ids != ref_ids:
-        raise RuntimeError("Internal error: ID order mismatch across models")
+    preds_sum: Optional[torch.Tensor] = None
+    ref_ids: Optional[List[str]] = None
 
-    preds_sum = p if preds_sum is None else (preds_sum + p)
+    for ckpt_path in ckpt_paths:
+        model, meta = load_model(ckpt_path, config, map_location="cpu", device=device, strict=False)
 
-    if preds_sum is None or ref_ids is None:
-        raise RuntimeError("No predictions produced (no checkpoints?)")
+        out_ids, p_forw = _predict_loader(model, loader_forw, device=device, amp=args.amp)
 
-    preds = preds_sum / float(len(ckpt_paths))
-    out_ids = ref_ids
-
-    # Write output
-    with out_path.open("w", newline="") as f:
-        w = csv.writer(f, delimiter="\t")
-        header = ["id", "prediction"]
-        if args.write_seq:
-            header = ["id", "sequence", "prediction"]
-        w.writerow(header)
-        if args.write_seq:
-            for _id, seq, pred in zip(out_ids, seqs, preds.tolist()):
-                w.writerow([_id, seq, pred])
+        if args.rc_average:
+            assert loader_rev is not None
+            out_ids2, p_rev = _predict_loader(model, loader_rev, device=device, amp=args.amp)
+            if out_ids2 != out_ids:
+                raise RuntimeError("Internal error: ID order mismatch between forward and reverse loaders")
+            p = (p_forw + p_rev) / 2.0
         else:
-            for _id, pred in zip(out_ids, preds.tolist()):
-                w.writerow([_id, pred])
+            p = p_forw
 
-    print("Saved:", out_path)
-    print("Loaded checkpoint:", ckpt_path)
-    if config_path is not None:
-        print("Loaded config:", config_path)
-    print("Checkpoint key prefix used:", meta.get("used_prefix"))
-    if meta.get("missing_keys"):
-        print("Warning: missing keys:")
-        for k in meta["missing_keys"][:20]:
-            print("  ", k)
-        if len(meta["missing_keys"]) > 20:
-            print(f"  ... ({len(meta['missing_keys'])} total)")
-    if meta.get("unexpected_keys"):
-        print("Warning: unexpected keys:")
-        for k in meta["unexpected_keys"][:20]:
-            print("  ", k)
-        if len(meta["unexpected_keys"]) > 20:
-            print(f"  ... ({len(meta['unexpected_keys'])} total)")
+        if ref_ids is None:
+            ref_ids = out_ids
+        elif out_ids != ref_ids:
+            raise RuntimeError("Internal error: ID order mismatch across models")
+
+        preds_sum = p if preds_sum is None else (preds_sum + p)
+
+        if preds_sum is None or ref_ids is None:
+            raise RuntimeError("No predictions produced (no checkpoints?)")
+
+        preds = preds_sum / float(len(ckpt_paths))
+        out_ids = ref_ids
+
+        # Write output
+        with out_path.open("w", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            header = ["id", "prediction"]
+            if args.write_seq:
+                header = ["id", "sequence", "prediction"]
+            w.writerow(header)
+            if args.write_seq:
+                for _id, seq, pred in zip(out_ids, seqs, preds.tolist()):
+                    w.writerow([_id, seq, pred])
+            else:
+                for _id, pred in zip(out_ids, preds.tolist()):
+                    w.writerow([_id, pred])
+
+        print("Saved:", out_path)
+        print("Loaded checkpoint:", ckpt_path)
+        if config_path is not None:
+            print("Loaded config:", config_path)
+        print("Checkpoint key prefix used:", meta.get("used_prefix"))
+        if meta.get("missing_keys"):
+            print("Warning: missing keys:")
+            for k in meta["missing_keys"][:20]:
+                print("  ", k)
+            if len(meta["missing_keys"]) > 20:
+                print(f"  ... ({len(meta['missing_keys'])} total)")
+        if meta.get("unexpected_keys"):
+            print("Warning: unexpected keys:")
+            for k in meta["unexpected_keys"][:20]:
+                print("  ", k)
+            if len(meta["unexpected_keys"]) > 20:
+                print(f"  ... ({len(meta['unexpected_keys'])} total)")
 
 
 if __name__ == "__main__":
