@@ -120,7 +120,7 @@ def main() -> None:
     # Decide sequence length
     seq_len = config.seq_len
     device = torch.device(args.device)
-    add_reverse_channel = args.rc_average or config.use_rev_channel
+    add_reverse_channel = False
 
     # parse input TSV
     df = pd.read_csv(input_path, sep="\t")
@@ -144,18 +144,17 @@ def main() -> None:
         alt_loader_rev = None
 
     # load all models
+    print(f"Loading {len(ckpt_paths)} models for ensembling...")
     models, meta_list = [], []
-    for ckpt_path in ckpt_paths:
+    for ckpt_path in tqdm(ckpt_paths, desc="Loading models"):
         model, meta = load_model(ckpt_path, config=config, device=device)
         models.append(model)
         meta_list.append(meta)
 
     # Predict with each model and aggregate
     print(f"Predicting variant effects using {len(models)} models...")
-
     all_ref_preds = []
     all_alt_preds = []
-
     for model in tqdm(models, desc="Models"):
         # forward predictions
         ref_ids_fwd, ref_preds_fwd = _predict_loader(model, ref_loader_fwd, device=device, amp=args.amp)
