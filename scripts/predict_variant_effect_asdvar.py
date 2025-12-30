@@ -35,6 +35,7 @@ from legnet import (
 
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 ############### Imports complete ###############
 
@@ -149,7 +150,48 @@ def main() -> None:
         models.append(model)
         meta_list.append(meta)
 
-    print (f"Loaded {len(models)} models for ensembling from {ckpt_dir}")
+    # Predict with each model and aggregate
+    print(f"Predicting variant effects using {len(models)} models...")
+
+    all_ref_preds = []
+    all_alt_preds = []
+
+    for model in tqdm(models, desc="Models"):
+        # forward predictions
+        ref_ids_fwd, ref_preds_fwd = _predict_loader(model, ref_loader_fwd, device=device, amp=args.amp)
+        alt_ids_fwd, alt_preds_fwd = _predict_loader(model, alt_loader_fwd, device=device, amp=args.amp)
+
+        if args.rc_average:
+            # reverse predictions if rc_average is enabled
+            ref_ids_rev, ref_preds_rev = _predict_loader(model, ref_loader_rev, device=device, amp=args.amp)
+            alt_ids_rev, alt_preds_rev = _predict_loader(model, alt_loader_rev, device=device, amp=args.amp)
+
+            # sanity check on IDs
+            assert ref_ids_fwd == ref_ids_rev, "Mismatch in reference sequence IDs between forward and reverse loaders"
+            assert alt_ids_fwd == alt_ids_rev, "Mismatch in alternate sequence IDs between forward and reverse loaders"
+
+            # average forward and reverse predictions
+            ref_preds = (ref_preds_fwd + ref_preds_rev) / 2.0
+            alt_preds = (alt_preds_fwd + alt_preds_rev) / 2.0
+
+        else:
+            ref_preds = ref_preds_fwd
+            alt_preds = alt_preds_fwd
+
+        all_ref_preds.append(ref_preds)
+        all_alt_preds.append(alt_preds)
+
+    # Aggregate predictions across models (mean)
+    mean_ref_preds = torch.mean(torch.stack(all_ref_preds, dim=0), dim=0)
+    mean_alt_preds = torch.mean(torch.stack(all_alt_preds, dim=0), dim=0)
+
+    df['pred_ref'] = mean_ref_preds.numpy()
+    df['pred_alt'] = mean_alt_preds.numpy()
+    df['pred_effect'] = df['pred_alt'] - df['pred_ref']
+
+    # Write output TSV
+    df.to_csv(out_path, sep="\t", index=False)
+    print(f"Wrote predictions to: {out_path}")
 
 
 
