@@ -40,10 +40,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
 
     src = parser.add_argument_group("model")
-    src.add_argument("--model_dir", type=str, default=None, help="Directory with config.json + checkpoint(s).")
-    src.add_argument("--checkpoint", type=str, default=None, help="Path to a checkpoint (.ckpt/.pt/.pth).")
-    src.add_argument("--config", type=str, default=None, help="Path to config.json (required for .ckpt).")
-
+    src.add_argument("--checkpoint_dir", type=str, default=None, help="Directory with config.json + checkpoint(s).")
+    
     inp = parser.add_argument_group("input")
     inp.add_argument("--input", type=str, required=True, help="tsv with sequences where columns are pair_name,logFC,ref_sequence,alt_sequence,ref_alpha,alt_alpha")
     
