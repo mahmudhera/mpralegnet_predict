@@ -33,6 +33,9 @@ from legnet import (
     resolve_config_path,
 )
 
+import pandas as pd
+import numpy as np
+
 ############### Imports complete ###############
 
 
@@ -92,11 +95,29 @@ def main() -> None:
 
     device = torch.device(args.device)
 
-    # print sequence len, device, num of checkpoints, config path
-    print(f"Sequence length: {seq_len}")
-    print(f"Device: {device}")
-    print(f"Number of checkpoints: {len(ckpt_paths)}")
-    print(f"Config path: {config_path}")
+    # parse input TSV
+    df = pd.read_csv(input_path, sep="\t")
+    pair_names = df['pair_name'].tolist()
+    ref_seqs = df['ref_sequence'].tolist()
+    alt_seqs = df['alt_sequence'].tolist()
+
+    # Create datasets
+    ref_dataset_fwd = SequenceOnlyDataset(pair_names, ref_seqs, seq_len=seq_len, reverse=False, add_reverse_channel=add_reverse_channel)
+    alt_dataset_fwd = SequenceOnlyDataset(pair_names, alt_seqs, seq_len=seq_len, reverse=False, add_reverse_channel=add_reverse_channel)
+    ref_loader_fwd = DataLoader(ref_dataset_fwd, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,pin_memory=(device.type == "cuda"))
+    alt_loader_fwd = DataLoader(alt_dataset_fwd, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,pin_memory=(device.type == "cuda"))
+
+    if args.rc_average:
+        ref_dataset_rev = SequenceOnlyDataset(pair_names, ref_seqs, seq_len=seq_len, reverse=True, add_reverse_channel=add_reverse_channel)
+        alt_dataset_rev = SequenceOnlyDataset(pair_names, alt_seqs, seq_len=seq_len, reverse=True, add_reverse_channel=add_reverse_channel)
+        ref_loader_rev = DataLoader(ref_dataset_rev, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,pin_memory=(device.type == "cuda"))
+        alt_loader_rev = DataLoader(alt_dataset_rev, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,pin_memory=(device.type == "cuda"))
+    else:
+        ref_loader_rev = None
+        alt_loader_rev = None
+
+    print('Created DataLoaders. Beginning inference...')
+
 
 
 if __name__ == "__main__":
