@@ -39,6 +39,32 @@ import numpy as np
 ############### Imports complete ###############
 
 
+
+def _predict_loader(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    *,
+    device: torch.device,
+    amp: bool,
+) -> Tuple[List[str], torch.Tensor]:
+    """Predict over an existing DataLoader (used for ensembling)."""
+    model.eval()
+    out_ids: List[str] = []
+    preds: List[torch.Tensor] = []
+
+    with torch.no_grad():
+        for batch in loader:
+            batch_ids, x = batch
+            out_ids.extend(list(batch_ids))
+            x = x.to(device, non_blocking=True)
+            with torch.cuda.amp.autocast(enabled=amp):
+                p = model(x)
+            preds.append(p.detach().float().cpu())
+
+    return out_ids, torch.cat(preds, dim=0)
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
 
@@ -116,7 +142,14 @@ def main() -> None:
         ref_loader_rev = None
         alt_loader_rev = None
 
-    print('Created DataLoaders. Beginning inference...')
+    # load all models
+    models, meta_list = [], []
+    for ckpt_path in ckpt_paths:
+        model, meta = load_model(ckpt_path, config=config, device=device)
+        models.append(model)
+        meta_list.append(meta)
+
+    print (f"Loaded {len(models)} models for ensembling from {ckpt_dir}")
 
 
 
