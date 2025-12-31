@@ -118,7 +118,7 @@ def main() -> None:
         args.rc_average = bool(config.reverse_augment)
 
     # Decide sequence length
-    seq_len = config.seq_len
+    seq_len = config.seq_len if config.seq_len is not None else 200
     device = torch.device(args.device)
     add_reverse_channel = False
 
@@ -127,15 +127,6 @@ def main() -> None:
     ids = df['rsid'].astype(str).tolist()
     ref_seqs = df['ref_seq'].astype(str).tolist()
     alt_seqs = df['alt_seq'].astype(str).tolist()
-
-    #### basic prints ####
-    # print first 5 rows of dataframe
-    print(df.head())
-    # print first 5 ids and sequences
-    print("First 5 IDs and sequences:")
-    for i in range(5):
-        print(f"ID: {ids[i]}, Ref Seq: {ref_seqs[i]}, Alt Seq: {alt_seqs[i]}")
-
 
     # truncate ref_seqs and alt_seqs to seq_len if longer
     len_of_each_sequence = len(ref_seqs[0])
