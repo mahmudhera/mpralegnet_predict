@@ -82,8 +82,10 @@ def main() -> None:
 
     data = parser.add_argument_group("data")
     data.add_argument("--data", type=str, required=True, help="TSV/CSV path with sequences + targets")
-    data.add_argument("--seq_col", type=str, default="sequence")
-    data.add_argument("--target_col", type=str, default="target")
+    data.add_argument("--ref_seq_col", type=str, default="reference sequence")
+    data.add_argument("--ref_activity_col", type=str, default="reference activity")
+    data.add_argument("--alt_seq_col", type=str, default="alternate sequence")
+    data.add_argument("--alt_activity_col", type=str, default="alternate sequence activity")
     data.add_argument("--sep", type=str, default=None, help="Delimiter (default: inferred from extension)")
     data.add_argument("--seq_len", type=int, default=None, help="Pad/truncate sequences to this length")
 
