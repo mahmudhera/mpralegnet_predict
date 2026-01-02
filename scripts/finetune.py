@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Fine-tune a stored MPRA-LegNet (LegNet) model on your own regression data.
+"""Fine-tune a stored MPRA-LegNet (LegNet) model on our data.
 
 This script:
 - loads a stored LegNet checkpoint
 - reads a table with DNA sequences + continuous targets
 - creates train/val/test splits
-- fine-tunes with your choice of optimizer: SGD, Adam, or AdamW
+- fine-tunes with our choice of optimizer: SGD, Adam, or AdamW
 - uses validation set for model selection (best epoch)
 - evaluates the best model on the test set
 
@@ -51,42 +51,7 @@ from legnet import (
 )
 from legnet.train_utils import eval_regression, run_epoch_train, set_seed
 
-
-def read_regression_table(
-    path: Path,
-    *,
-    seq_col: str,
-    target_col: str,
-    sep: str,
-) -> Tuple[List[str], List[float]]:
-    """Read (seqs, targets) from a TSV/CSV with header."""
-    seqs: List[str] = []
-    targets: List[float] = []
-
-    with path.open("r", newline="") as f:
-        reader = csv.DictReader(f, delimiter=sep)
-        if reader.fieldnames is None:
-            raise ValueError("Input file appears to have no header")
-        if seq_col not in reader.fieldnames:
-            raise ValueError(f"Missing seq_col '{seq_col}' in header: {reader.fieldnames}")
-        if target_col not in reader.fieldnames:
-            raise ValueError(f"Missing target_col '{target_col}' in header: {reader.fieldnames}")
-
-        for row in reader:
-            s = row[seq_col].strip().upper()
-            if not s:
-                continue
-            try:
-                y = float(row[target_col])
-            except Exception:
-                continue
-            seqs.append(s)
-            targets.append(y)
-
-    if not seqs:
-        raise ValueError("No examples read from input table")
-
-    return seqs, targets
+import pandas as pd
 
 
 def build_optimizer(
@@ -213,7 +178,11 @@ def main() -> None:
     if sep is None:
         sep = "," if data_path.suffix.lower() == ".csv" else "\t"
 
-    seqs, targets = read_regression_table(data_path, seq_col=args.seq_col, target_col=args.target_col, sep=sep)
+    df = pd.read_csv(data_path, sep=sep, quoting=csv.QUOTE_MINIMAL)
+    seqs = df[args.seq_col].str.upper().tolist()
+    targets = df[args.target_col].astype(float).tolist()
+    if len(seqs) != len(targets):
+        raise SystemExit("Number of sequences and targets do not match")
 
     # Decide seq_len
     seq_len = args.seq_len
