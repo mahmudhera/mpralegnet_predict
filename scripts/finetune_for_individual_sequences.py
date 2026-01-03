@@ -260,7 +260,7 @@ def main() -> None:
     if config_path is not None:
         print("Loaded config:", config_path)
     print("Checkpoint key prefix used:", meta.get("used_prefix"))
-    print(f"Data: n={len(seqs)} | train={len(train_ds)} val={len(val_ds)} test={len(test_ds)}")
+    print(f"Data: n={2*len(ref_seqs)} | train={len(train_ds)} val={len(val_ds)} test={len(test_ds)}")
     print("Training with:", args.optimizer, "lr=", args.lr, "wd=", args.weight_decay)
     print("Augmentation: rc_augment=", bool(args.rc_augment), "| rc_average(eval)=", bool(args.rc_average))
 
