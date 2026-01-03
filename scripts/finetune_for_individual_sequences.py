@@ -96,7 +96,8 @@ def main() -> None:
     split.add_argument("--seed", type=int, default=777)
 
     train = parser.add_argument_group("train")
-    train.add_argument("--out_dir", type=str, required=True)
+    train.add_argument("--out_model", type=str, default="best_model.pt")
+    train.add_argument("--out_metrics", type=str, default="metrics.json")
     train.add_argument("--epochs", type=int, default=20)
     train.add_argument("--batch_size", type=int, default=256)
     train.add_argument("--num_workers", type=int, default=4)
@@ -132,9 +133,6 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve checkpoint + config
     if args.model_dir:
@@ -399,7 +397,7 @@ def main() -> None:
     print(f"Test: mse={te.loss:.6f} | pearson={te.pearson:.4f} | n={te.n}")
 
     # Save best model (repo-native checkpoint)
-    best_path = out_dir / "best_legnet.pt"
+    best_path = Path(args.out_model)
     extra = {
         "optimizer": args.optimizer,
         "lr": args.lr,
@@ -417,11 +415,11 @@ def main() -> None:
     }
     save_checkpoint(best_path, model, config, extra=extra)
 
-    with (out_dir / "metrics.json").open("w") as f:
+    with Path(args.out_metrics).open("w") as f:
         json.dump({"val_best_metric": best_metric, "test": {"mse": te.loss, "pearson": te.pearson}}, f, indent=2)
 
     print("Saved best checkpoint:", best_path)
-    print("Saved metrics:", out_dir / "metrics.json")
+    print("Saved metrics:", args.out_metrics)
 
 
 if __name__ == "__main__":
