@@ -200,19 +200,38 @@ def main() -> None:
         len(ref_seqs), train_frac=args.train_frac, val_frac=args.val_frac, test_frac=args.test_frac, seed=args.seed
     )
 
+    seqs = ref_seqs + alt_seqs
+    targets = ref_targets + alt_targets
+    train_idx = train_idx + [i + len(ref_seqs) for i in train_idx]
+    val_idx = val_idx + [i + len(ref_seqs) for i in val_idx]
+    test_idx = test_idx + [i + len(ref_seqs) for i in test_idx]
+
     add_reverse_channel = bool(config.use_reverse_channel)
 
-    train_ds1 = IndexedSequenceRegressionDataset(ref_seqs, ref_targets, train_idx, seq_len=seq_len, rc_augment=bool(args.rc_augment), add_reverse_channel=add_reverse_channel)
-    train_ds2 = IndexedSequenceRegressionDataset(alt_seqs, alt_targets, train_idx, seq_len=seq_len, rc_augment=bool(args.rc_augment), add_reverse_channel=add_reverse_channel)
-    train_ds = torch.utils.data.ConcatDataset([train_ds1, train_ds2])
-
-    val_ds1 = IndexedSequenceRegressionDataset(ref_seqs, ref_targets, val_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
-    val_ds2 = IndexedSequenceRegressionDataset(alt_seqs, alt_targets, val_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
-    val_ds = torch.utils.data.ConcatDataset([val_ds1, val_ds2])
-
-    test_ds1 = IndexedSequenceRegressionDataset(ref_seqs, ref_targets, test_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
-    test_ds2 = IndexedSequenceRegressionDataset(alt_seqs, alt_targets, test_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
-    test_ds = torch.utils.data.ConcatDataset([test_ds1, test_ds2])
+    train_ds = IndexedSequenceRegressionDataset(
+        seqs,
+        targets,
+        indices=train_idx,
+        seq_len=seq_len,
+        rc_augment=bool(args.rc_augment),
+        add_reverse_channel=add_reverse_channel,
+    )
+    val_ds = IndexedSequenceRegressionDataset(
+        seqs,
+        targets,
+        indices=val_idx,
+        seq_len=seq_len,
+        rc_augment=False,
+        add_reverse_channel=add_reverse_channel,
+    )
+    test_ds = IndexedSequenceRegressionDataset(
+        seqs,
+        targets,
+        indices=test_idx,
+        seq_len=seq_len,
+        rc_augment=False,
+        add_reverse_channel=add_reverse_channel,
+    )
 
     device = torch.device(args.device)
 
