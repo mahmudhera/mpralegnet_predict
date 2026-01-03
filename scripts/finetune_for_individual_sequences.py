@@ -178,12 +178,6 @@ def main() -> None:
     if sep is None:
         sep = "," if data_path.suffix.lower() == ".csv" else "\t"
 
-    # Decide seq_len
-    seq_len = args.seq_len
-    if seq_len is None:
-        # Assume fixed-length sequences; keep as-is.
-        seq_len = len(seqs[0])
-
     df = pd.read_csv(data_path, sep=sep)
     ref_seqs = df[args.ref_seq_col].str.upper().tolist()
     ref_targets = df[args.ref_activity_col].astype(float).tolist()
@@ -193,6 +187,12 @@ def main() -> None:
         raise SystemExit("Number of reference sequences and reference targets do not match")
     if len(alt_seqs) != len(alt_targets):
         raise SystemExit("Number of alternate sequences and alternate targets do not match")
+
+    # Decide seq_len
+    seq_len = args.seq_len
+    if seq_len is None:
+        # Assume fixed-length sequences; keep as-is.
+        seq_len = len(ref_seqs[0])
 
     # Split
     set_seed(args.seed)
