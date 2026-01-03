@@ -178,6 +178,12 @@ def main() -> None:
     if sep is None:
         sep = "," if data_path.suffix.lower() == ".csv" else "\t"
 
+    # Decide seq_len
+    seq_len = args.seq_len
+    if seq_len is None:
+        # Assume fixed-length sequences; keep as-is.
+        seq_len = len(seqs[0])
+
     df = pd.read_csv(data_path, sep=sep)
     ref_seqs = df[args.ref_seq_col].str.upper().tolist()
     ref_targets = df[args.ref_activity_col].astype(float).tolist()
@@ -188,47 +194,25 @@ def main() -> None:
     if len(alt_seqs) != len(alt_targets):
         raise SystemExit("Number of alternate sequences and alternate targets do not match")
 
-    seqs = ref_seqs + alt_seqs
-    targets = ref_targets + alt_targets
-
-    # Decide seq_len
-    seq_len = args.seq_len
-    if seq_len is None:
-        # Assume fixed-length sequences; keep as-is.
-        seq_len = len(seqs[0])
-
     # Split
     set_seed(args.seed)
     train_idx, val_idx, test_idx = split_indices(
-        len(seqs), train_frac=args.train_frac, val_frac=args.val_frac, test_frac=args.test_frac, seed=args.seed
+        len(ref_seqs), train_frac=args.train_frac, val_frac=args.val_frac, test_frac=args.test_frac, seed=args.seed
     )
 
     add_reverse_channel = bool(config.use_reverse_channel)
 
-    train_ds = IndexedSequenceRegressionDataset(
-        seqs,
-        targets,
-        train_idx,
-        seq_len=seq_len,
-        rc_augment=bool(args.rc_augment),
-        add_reverse_channel=add_reverse_channel,
-    )
-    val_ds = IndexedSequenceRegressionDataset(
-        seqs,
-        targets,
-        val_idx,
-        seq_len=seq_len,
-        rc_augment=False,
-        add_reverse_channel=add_reverse_channel,
-    )
-    test_ds = IndexedSequenceRegressionDataset(
-        seqs,
-        targets,
-        test_idx,
-        seq_len=seq_len,
-        rc_augment=False,
-        add_reverse_channel=add_reverse_channel,
-    )
+    train_ds1 = IndexedSequenceRegressionDataset(ref_seqs, ref_targets, train_idx, seq_len=seq_len, rc_augment=bool(args.rc_augment), add_reverse_channel=add_reverse_channel)
+    train_ds2 = IndexedSequenceRegressionDataset(alt_seqs, alt_targets, train_idx, seq_len=seq_len, rc_augment=bool(args.rc_augment), add_reverse_channel=add_reverse_channel)
+    train_ds = torch.utils.data.ConcatDataset([train_ds1, train_ds2])
+
+    val_ds1 = IndexedSequenceRegressionDataset(ref_seqs, ref_targets, val_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
+    val_ds2 = IndexedSequenceRegressionDataset(alt_seqs, alt_targets, val_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
+    val_ds = torch.utils.data.ConcatDataset([val_ds1, val_ds2])
+
+    test_ds1 = IndexedSequenceRegressionDataset(ref_seqs, ref_targets, test_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
+    test_ds2 = IndexedSequenceRegressionDataset(alt_seqs, alt_targets, test_idx, seq_len=seq_len, rc_augment=False, add_reverse_channel=add_reverse_channel)
+    test_ds = torch.utils.data.ConcatDataset([test_ds1, test_ds2])
 
     device = torch.device(args.device)
 
