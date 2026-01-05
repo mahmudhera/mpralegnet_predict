@@ -461,6 +461,9 @@ class SiameseDeltaHead(nn.Module):
             nn.Linear(embed_dim, hidden_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),
         )
         print(f"Created SiameseDeltaHead: embed_dim={embed_dim}, hidden_dim={hidden_dim}, dropout={dropout}")
