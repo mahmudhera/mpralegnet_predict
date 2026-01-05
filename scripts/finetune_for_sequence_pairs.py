@@ -244,7 +244,7 @@ def legnet_embedding_forward(model: nn.Module, x: torch.Tensor) -> torch.Tensor:
       stem -> main -> mapper -> adaptive_avg_pool -> squeeze
     This matches upstream LegNet forward structure.
 
-    If your checkpoint uses a different module layout, you can modify here.
+    If the checkpoint uses a different module layout, we can modify here.
     """
     # Common in human_legnet: model.stem, model.main, model.mapper, model.head
     if hasattr(model, "stem") and hasattr(model, "main") and hasattr(model, "mapper"):
@@ -463,6 +463,7 @@ class SiameseDeltaHead(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),
         )
+        print(f"Created SiameseDeltaHead: embed_dim={embed_dim}, hidden_dim={hidden_dim}, dropout={dropout}")
 
     def forward(self, x_ref: torch.Tensor, x_alt: torch.Tensor) -> torch.Tensor:
         h_ref = self.encoder(x_ref)
