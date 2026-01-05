@@ -168,6 +168,9 @@ class PairDeltaDataset(Dataset):
         flip_pairs: bool = False,
         rc_pair_augment: bool = False,
         deterministic: bool = False,
+        normalize_delta: bool = False,
+        normalize_mean: Optional[float] = None,
+        normalize_std: Optional[float] = None,
     ) -> None:
         self.ref_seqs = ref_seqs
         self.ref_y = ref_y
@@ -184,14 +187,30 @@ class PairDeltaDataset(Dataset):
         # if deterministic=True, no randomness even if flags enabled
         self.deterministic = bool(deterministic)
 
+        self.normalize_delta = bool(normalize_delta)
+        if self.normalize_mean is not None and self.normalize_std is not None:
+            self.delta_mean = float(normalize_mean)
+            self.delta_std = float(normalize_std)
+        else:
+            deltas = [self.alt_y[i] - self.ref_y[i] for i in self.indices]
+            self.delta_mean = float(torch.tensor(deltas, dtype=torch.float32).mean().item())
+            self.delta_std = float(torch.tensor(deltas, dtype=torch.float32).std().item())
+            if self.delta_std < 1e-6:
+                raise RuntimeError("Delta standard deviation is too small; cannot normalize.")
+
     def __len__(self) -> int:
         return len(self.indices)
+
+    def get_mean_std_of_deltas(self) -> Tuple[float, float]:
+        return self.delta_mean, self.delta_std
 
     def __getitem__(self, i: int):
         idx = self.indices[i]
         rs = self.ref_seqs[idx]
         asq = self.alt_seqs[idx]
         delta = float(self.alt_y[idx] - self.ref_y[idx])
+        if self.normalize_delta:
+            delta = (delta - self.delta_mean) / self.delta_std
 
         do_flip = False
         do_rc = False
@@ -904,6 +923,8 @@ def main() -> None:
     data.add_argument("--alt_activity_col", type=str, default="alternate sequence activity")
     data.add_argument("--sep", type=str, default=None, help="Delimiter (default: inferred from extension)")
     data.add_argument("--seq_len", type=int, default=200, help="Pad/truncate sequences to this length (default: 200)")
+    data.add_argument("--normalize_delta", action=argparse.BooleanOptionalAction, default=False,
+                      help="Normalize delta values to zero mean/unit variance")
 
     split = parser.add_argument_group("split")
     split.add_argument("--train_frac", type=float, default=0.8)
@@ -1018,17 +1039,26 @@ def main() -> None:
     train_ds_ridge = PairDeltaDataset(
         ref_seqs, ref_y, alt_seqs, alt_y, train_idx,
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
-        flip_pairs=False, rc_pair_augment=False, deterministic=True
+        flip_pairs=False, rc_pair_augment=False, deterministic=True,
+        normalize_delta=bool(args.normalize_delta), normalize_mean=None, normalize_std=None,
     )
+    
+    # Get train delta mean/std for later use (e.g. unnormalization)
+    train_mean, train_std = train_ds_ridge.get_mean_std_of_deltas()
+
+    # normalize val/test with train stats
     val_ds = PairDeltaDataset(
         ref_seqs, ref_y, alt_seqs, alt_y, val_idx,
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
-        flip_pairs=False, rc_pair_augment=False, deterministic=True
+        flip_pairs=False, rc_pair_augment=False, deterministic=True,
+        normalize_delta=bool(args.normalize_delta), normalize_mean=train_mean, normalize_std=train_std,
     )
+
     test_ds = PairDeltaDataset(
         ref_seqs, ref_y, alt_seqs, alt_y, test_idx,
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
-        flip_pairs=False, rc_pair_augment=False, deterministic=True
+        flip_pairs=False, rc_pair_augment=False, deterministic=True,
+        normalize_delta=bool(args.normalize_delta),
     )
 
     # - Train-time augmented dataset for siamese/softcls
@@ -1038,6 +1068,7 @@ def main() -> None:
         flip_pairs=bool(args.flip_pairs),
         rc_pair_augment=bool(args.rc_pair_augment),
         deterministic=False,
+        normalize_delta=bool(args.normalize_delta), normalize_mean=train_mean, normalize_std=train_std,
     )
 
     def make_loader(ds: Dataset, shuffle: bool) -> DataLoader:
