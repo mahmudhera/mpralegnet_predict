@@ -188,7 +188,7 @@ class PairDeltaDataset(Dataset):
         self.deterministic = bool(deterministic)
 
         self.normalize_delta = bool(normalize_delta)
-        if self.normalize_mean is not None and self.normalize_std is not None:
+        if normalize_mean is not None and normalize_std is not None:
             self.delta_mean = float(normalize_mean)
             self.delta_std = float(normalize_std)
         else:
