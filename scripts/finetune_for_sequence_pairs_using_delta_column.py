@@ -506,11 +506,6 @@ def eval_delta_model(
     p_rev, _ = predict_delta_loader(model, rev_loader, device, amp=amp)
     p = (p_fwd + p_rev) / 2.0
     
-    # for debugging, print first 20 p and y
-    print('DEBUG')
-    print("p:", p[:20])
-    print("y:", y[:20])
-
     return {"mse": mse_torch(p, y), "pearson": pearsonr_torch(p, y), "n": int(len(y))}
 
 
@@ -1004,14 +999,6 @@ def main() -> None:
     if n_trim > 0:
         ref_seqs = [s[n_trim:] for s in ref_seqs]
         alt_seqs = [s[n_trim:] for s in alt_seqs]
-
-    # Debug: show first 5 sequences and deltas
-    print('DEBUG')
-    for i in range(min(5, n_pairs)):
-        print(f"Pair {i}:")
-        print("  ref_seq:", ref_seqs[i])
-        print("  alt_seq:", alt_seqs[i])
-        print("  delta:", deltas[i])
 
     # Pair-level split
     train_idx, val_idx, test_idx = split_indices(
