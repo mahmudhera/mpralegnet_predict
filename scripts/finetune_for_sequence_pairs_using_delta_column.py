@@ -900,6 +900,7 @@ def main() -> None:
     data.add_argument("--delta_multiplier", type=float, default=1.0, help="Multiply delta labels by this (use -1 if needed)")
     data.add_argument("--sep", type=str, default=None, help="Delimiter (default: inferred from extension)")
     data.add_argument("--seq_len", type=int, default=200, help="Pad/truncate sequences to this length (default: 200)")
+    data.add_argument("--num_chars_to_ignore", type=int, default=0, help="Ignore this many chars at start of sequences")
 
     split = parser.add_argument_group("split")
     split.add_argument("--train_frac", type=float, default=0.8)
