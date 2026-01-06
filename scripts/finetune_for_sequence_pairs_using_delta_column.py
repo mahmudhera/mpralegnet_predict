@@ -999,6 +999,12 @@ def main() -> None:
     n_pairs = len(ref_seqs)
     seq_len = int(args.seq_len)
 
+    # Trim sequences if requested
+    n_trim = int(args.num_chars_to_ignore)
+    if n_trim > 0:
+        ref_seqs = [s[n_trim:] for s in ref_seqs]
+        alt_seqs = [s[n_trim:] for s in alt_seqs]
+
     # Debug: show first 5 sequences and deltas
     print('DEBUG')
     for i in range(min(5, n_pairs)):
