@@ -200,18 +200,25 @@ def main() -> None:
         len(ref_seqs), train_frac=args.train_frac, val_frac=args.val_frac, test_frac=args.test_frac, seed=args.seed
     )
 
+    # compute the delta targets
+    delta_targets = [alt - ref for ref, alt in zip(ref_targets, alt_targets)]
+    delta_targets_train = [delta_targets[i] for i in train_idx]
+    delta_targets_val = [delta_targets[i] for i in val_idx]
+    delta_targets_test = [delta_targets[i] for i in test_idx]
+
+    # Build datasets + loaders
     seqs = ref_seqs + alt_seqs
     targets = ref_targets + alt_targets
-    train_idx = train_idx + [i + len(ref_seqs) for i in train_idx]
-    val_idx = val_idx + [i + len(ref_seqs) for i in val_idx]
-    test_idx = test_idx + [i + len(ref_seqs) for i in test_idx]
+    train_idx_all = train_idx + [i + len(ref_seqs) for i in train_idx]
+    val_idx_all = val_idx + [i + len(ref_seqs) for i in val_idx]
+    test_idx_all = test_idx + [i + len(ref_seqs) for i in test_idx]
 
     add_reverse_channel = bool(config.use_reverse_channel)
 
     train_ds = IndexedSequenceRegressionDataset(
         seqs,
         targets,
-        indices=train_idx,
+        indices=train_idx_all,
         seq_len=seq_len,
         rc_augment=bool(args.rc_augment),
         add_reverse_channel=add_reverse_channel,
@@ -219,7 +226,7 @@ def main() -> None:
     val_ds = IndexedSequenceRegressionDataset(
         seqs,
         targets,
-        indices=val_idx,
+        indices=val_idx_all,
         seq_len=seq_len,
         rc_augment=False,
         add_reverse_channel=add_reverse_channel,
@@ -227,6 +234,24 @@ def main() -> None:
     test_ds = IndexedSequenceRegressionDataset(
         seqs,
         targets,
+        indices=test_idx_all,
+        seq_len=seq_len,
+        rc_augment=False,
+        add_reverse_channel=add_reverse_channel,
+    )
+
+    # create ds for test seqs only in ref, and only in alt, separately
+    test_ds_ref_only = IndexedSequenceRegressionDataset(
+        ref_seqs,
+        ref_targets,
+        indices=test_idx,
+        seq_len=seq_len,
+        rc_augment=False,
+        add_reverse_channel=add_reverse_channel,
+    )
+    test_ds_alt_only = IndexedSequenceRegressionDataset(
+        alt_seqs,
+        alt_targets,
         indices=test_idx,
         seq_len=seq_len,
         rc_augment=False,
@@ -398,6 +423,33 @@ def main() -> None:
 
     print("\nBest validation metric:", args.select_metric, "=", best_metric)
     print(f"Test: mse={te.loss:.6f} | pearson={te.pearson:.4f} | n={te.n}")
+
+    # now test for test_ds_ref_only and test_ds_alt_only
+    test_loader_ref_only = DataLoader(
+        test_ds_ref_only,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=(device.type == "cuda"),
+    )
+    
+    test_loader_alt_only = DataLoader(
+        test_ds_alt_only,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=(device.type == "cuda"),
+    )
+    
+    # get delta of predictions for alt - ref
+    from legnet.train_utils import predict_loader
+    p_ref, _ = predict_loader(model, test_loader_ref_only, device, amp=args.amp)
+    p_alt, _ = predict_loader(model, test_loader_alt_only, device, amp=args.amp)
+    p_delta = p_alt - p_ref
+    delta_loss = torch.nn.functional.mse_loss(p_delta, torch.tensor(delta_targets_test, device=device)).item()
+    from legnet.metrics import pearsonr
+    delta_pearson = pearsonr(p_delta, torch.tensor(delta_targets_test, device=device)).item()
+    print(f"Delta Test (alt - ref): mse={delta_loss:.6f} | pearson={delta_pearson:.4f} | n={len(delta_targets_test)}")
 
     # Save best model (repo-native checkpoint)
     best_path = Path(args.out_model)
