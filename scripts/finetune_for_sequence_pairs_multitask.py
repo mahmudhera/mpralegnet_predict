@@ -55,11 +55,7 @@ def seed_worker(worker_id: int) -> None:
     # Make python/random deterministic-ish per worker
     worker_seed = torch.initial_seed() % 2**32
     random.seed(worker_seed)
-
-
-# -------------------------
-# Data loading
-# -------------------------
+    
 
 # -------------------------
 # Pair datasets
