@@ -998,6 +998,14 @@ def main() -> None:
     n_pairs = len(ref_seqs)
     seq_len = int(args.seq_len)
 
+    # Debug: show first 5 sequences and deltas
+    print('DEBUG')
+    for i in range(min(5, n_pairs)):
+        print(f"Pair {i}:")
+        print("  ref_seq:", ref_seqs[i])
+        print("  alt_seq:", alt_seqs[i])
+        print("  delta:", deltas[i])
+
     # Pair-level split
     train_idx, val_idx, test_idx = split_indices(
         n_pairs,
