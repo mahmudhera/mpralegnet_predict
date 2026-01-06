@@ -505,6 +505,12 @@ def eval_delta_model(
     p_fwd, y = predict_delta_loader(model, loader, device, amp=amp)
     p_rev, _ = predict_delta_loader(model, rev_loader, device, amp=amp)
     p = (p_fwd + p_rev) / 2.0
+    
+    # for debugging, print first 20 p and y
+    print('DEBUG')
+    print("p:", p[:20])
+    print("y:", y[:20])
+
     return {"mse": mse_torch(p, y), "pearson": pearsonr_torch(p, y), "n": int(len(y))}
 
 
