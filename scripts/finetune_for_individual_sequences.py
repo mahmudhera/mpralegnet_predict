@@ -446,9 +446,10 @@ def main() -> None:
     p_ref, _ = predict_loader(model, test_loader_ref_only, device, amp=args.amp)
     p_alt, _ = predict_loader(model, test_loader_alt_only, device, amp=args.amp)
     p_delta = p_alt - p_ref
-    delta_loss = torch.nn.functional.mse_loss(p_delta, torch.tensor(delta_targets_test, device=device)).item()
+    delta_targets_test_tensor = torch.tensor(delta_targets_test, device=device)
+    delta_loss = torch.nn.functional.mse_loss(p_delta, delta_targets_test_tensor).item()
     from legnet.metrics import pearsonr
-    delta_pearson = pearsonr(p_delta, torch.tensor(delta_targets_test, device=device)).item()
+    delta_pearson = pearsonr(p_delta, delta_targets_test_tensor).item()
     print(f"Delta Test (alt - ref): mse={delta_loss:.6f} | pearson={delta_pearson:.4f} | n={len(delta_targets_test)}")
 
     # Save best model (repo-native checkpoint)
