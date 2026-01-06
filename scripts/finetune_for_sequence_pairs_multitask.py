@@ -55,7 +55,7 @@ def seed_worker(worker_id: int) -> None:
     # Make python/random deterministic-ish per worker
     worker_seed = torch.initial_seed() % 2**32
     random.seed(worker_seed)
-    
+
 
 # -------------------------
 # Pair datasets
@@ -639,7 +639,6 @@ def main() -> None:
     print("Checkpoint key prefix used:", meta.get("used_prefix"))
     print(f"Pairs: n={n_pairs} | train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
     print("seq_len:", seq_len, "| add_reverse_channel:", add_reverse_channel)
-    print("methods:", args.methods)
     print("rc_pair_augment(train):", bool(args.rc_pair_augment), "| flip_pairs(train):", bool(args.flip_pairs))
     print("rc_average(eval):", bool(args.rc_average))
 
