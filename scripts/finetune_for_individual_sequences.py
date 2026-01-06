@@ -447,6 +447,7 @@ def main() -> None:
     p_alt, _ = predict_loader(model, test_loader_alt_only, device, amp=args.amp)
     p_delta = p_alt - p_ref
     delta_targets_test_tensor = torch.tensor(delta_targets_test, device=device)
+    p_delta = p_delta.to(device)
     delta_loss = torch.nn.functional.mse_loss(p_delta, delta_targets_test_tensor).item()
     from legnet.metrics import pearsonr
     delta_pearson = pearsonr(p_delta, delta_targets_test_tensor).item()
