@@ -510,6 +510,7 @@ def run_multitask(
     amp: bool,
     rc_average: bool,
     epochs: int,
+    num_epochs_when_trunk_trainable: int,
     optimizer_name: str,
     lr: float,
     weight_decay: float,
@@ -559,6 +560,12 @@ def run_multitask(
         # If trunk is frozen, keep it in eval mode to freeze BN stats.
         if freeze_encoder:
             set_legnet_trunk_eval(model.legnet)
+
+        if epoch > num_epochs_when_trunk_trainable and not freeze_encoder:
+            freeze_encoder = True
+            freeze_legnet_trunk_params(model.legnet)
+            set_legnet_trunk_eval(model.legnet)
+            print(f"Freezing LegNet trunk parameters from epoch {epoch} onwards.")
 
         total_loss = 0.0
         total_ref = 0.0
@@ -737,6 +744,7 @@ def main() -> None:
 
     train = parser.add_argument_group("training hyperparameters")
     train.add_argument("--epochs", type=int, default=30)
+    train.add_argument("--num_epochs_when_trunk_trainable", type=int, default=10)
     train.add_argument("--batch_size", type=int, default=256)
     train.add_argument("--num_workers", type=int, default=1)
     train.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adam", "adamw"])
@@ -946,6 +954,7 @@ def main() -> None:
         amp=bool(args.amp),
         rc_average=bool(args.rc_average),
         epochs=int(args.epochs),
+        num_epochs_when_trunk_trainable=int(args.num_epochs_when_trunk_trainable),
         optimizer_name=args.optimizer,
         lr=float(args.lr),
         weight_decay=float(args.weight_decay),
