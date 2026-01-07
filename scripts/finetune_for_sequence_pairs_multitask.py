@@ -506,6 +506,7 @@ def eval_multitask_model(
         # Delta (on the scale used for training)
         "delta_mse": mse_torch(p_del, y_del),
         "delta_pearson": pearsonr_torch(p_del, y_del),
+        "all_seq_pearson": pearsonr_torch(p_alt + p_ref, y_alt + y_ref),
     }
 
     # If delta normalization was used, report MSE in original delta units too.
