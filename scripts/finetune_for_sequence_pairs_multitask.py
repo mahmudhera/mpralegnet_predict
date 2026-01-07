@@ -367,6 +367,16 @@ class MultiTaskPairModel(nn.Module):
             nn.Linear(delta_hidden_dim, 1),
         )
 
+        self.activity_head = nn.Sequential(
+            nn.Linear(embed_dim, delta_hidden_dim),
+            nn.SiLU(),
+            nn.Dropout(delta_dropout),
+            nn.Linear(delta_hidden_dim, delta_hidden_dim),
+            nn.SiLU(),
+            nn.Dropout(delta_dropout),
+            nn.Linear(delta_hidden_dim, 1),
+        )
+
         print(
             f"Created MultiTaskPairModel: embed_dim={embed_dim}, "
             f"delta_hidden_dim={delta_hidden_dim}, delta_dropout={delta_dropout}"
@@ -376,8 +386,8 @@ class MultiTaskPairModel(nn.Module):
         h_ref = self.encoder(x_ref)
         h_alt = self.encoder(x_alt)
 
-        y_ref = legnet_head_forward(self.legnet, h_ref)
-        y_alt = legnet_head_forward(self.legnet, h_alt)
+        y_ref = self.activity_head(h_ref).squeeze(-1)
+        y_alt = self.activity_head(h_alt).squeeze(-1)
 
         d = h_alt - h_ref
         y_delta = self.delta_head(d).squeeze(-1)
