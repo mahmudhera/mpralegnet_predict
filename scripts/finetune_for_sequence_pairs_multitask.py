@@ -70,6 +70,27 @@ def build_optimizer(
     raise ValueError(f"Unknown optimizer: {name}")
 
 
+def build_scheduler(
+    name: str,
+    optimizer: torch.optim.Optimizer,
+    *,
+    epochs: int,
+    steps_per_epoch: int,
+) -> Optional[torch.optim.lr_scheduler._LRScheduler]:
+    name = name.lower()
+    if name == "none":
+        return None
+    if name == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs * steps_per_epoch)
+    if name == "reduce_on_plateau":
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+    if name == "linear":
+        def lr_lambda(current_step: int):
+            return 1.0 - (current_step / (epochs * steps_per_epoch))
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+    raise ValueError(f"Unknown scheduler: {name}")
+
+
 def make_criterion(name: str) -> nn.Module:
     name = name.lower()
     if name == "mse":
@@ -527,6 +548,7 @@ def run_multitask(
     select_metric: str,
     freeze_encoder: bool,
     out_dir: Path,
+    scheduler: str = "none",
 ) -> Dict:
     # Infer embed dim
     encoder = LegNetEncoder(legnet).to(device)
@@ -550,6 +572,7 @@ def run_multitask(
 
     params = [p for p in model.parameters() if p.requires_grad]
     opt = build_optimizer(optimizer_name, params, lr=lr, weight_decay=weight_decay, momentum=momentum)
+    sched = build_scheduler(scheduler, opt, epochs=epochs, steps_per_epoch=len(train_loader))
     scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
 
     best_state = None
@@ -628,11 +651,18 @@ def run_multitask(
             f"train_loss={tr['loss']:.6f} (ref={tr['ref_loss']:.6f} alt={tr['alt_loss']:.6f} del={tr['delta_loss']:.6f}) | "
             f"val: ref_mse={va['ref_mse']:.6f} ref_r={va['ref_pearson']:.4f} | "
             f"alt_mse={va['alt_mse']:.6f} alt_r={va['alt_pearson']:.4f} | "
-            f"delta_mse={va['delta_mse']:.6f} delta_r={va['delta_pearson']:.4f}"
+            f"delta_mse={va['delta_mse']:.6f} delta_r={va['delta_pearson']:.4f} --||-- "
+            f"learning_rate={opt.param_groups[0]['lr']:.6e}"
         )
         if "delta_mse_raw" in va:
             msg += f" (delta_mse_raw={va['delta_mse_raw']:.6f})"
         print(msg)
+
+        if sched is not None:
+            if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                sched.step(va["delta_mse"])
+            else:
+                sched.step()
 
     assert best_state is not None
     model.load_state_dict(best_state)
@@ -752,6 +782,7 @@ def main() -> None:
     train.add_argument("--weight_decay", type=float, default=1e-3)
     train.add_argument("--momentum", type=float, default=0.9)
     train.add_argument("--grad_clip", type=float, default=1.0)
+    train.add_argument("--scheduler", type=str, default="none", choices=["cosine", "none", "reduce_on_plateau", "linear"]) 
 
     # Delta head hyperparameters (same style as the siamese delta head)
     train.add_argument("--delta_hidden_dim", type=int, default=256)
@@ -971,6 +1002,7 @@ def main() -> None:
         select_metric=str(args.select_metric),
         freeze_encoder=bool(args.freeze_encoder),
         out_dir=multitask_dir,
+        scheduler=str(args.scheduler),
     )
 
     print("[multitask] test:", metrics["test"])
