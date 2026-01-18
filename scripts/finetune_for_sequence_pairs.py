@@ -194,6 +194,10 @@ class PairDeltaDataset(Dataset):
         self.rc_pair_augment = bool(rc_pair_augment)
 
         if self.rc_pair_augment:
+            ref_seqs = self.ref_seqs.copy()
+            ref_y = self.ref_y.copy()
+            alt_seqs = self.alt_seqs.copy()
+            alt_y = self.alt_y.copy()
             ref_seqs_reverse_compement = [reverse_complement(s) for s in self.ref_seqs]
             alt_seqs_reverse_compement = [reverse_complement(s) for s in self.alt_seqs]
             self.ref_seqs += alt_seqs + ref_seqs_reverse_compement + alt_seqs_reverse_compement
@@ -541,6 +545,7 @@ def eval_delta_model(
     )
     p_fwd, y = predict_delta_loader(model, loader, device, amp=amp)
     p_rev, _ = predict_delta_loader(model, rev_loader, device, amp=amp)
+
     p = (p_fwd + p_rev) / 2.0
     return {"mse": mse_torch(p, y), "pearson": pearsonr_torch(p, y), "n": int(len(y))}
 
