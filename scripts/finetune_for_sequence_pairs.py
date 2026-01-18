@@ -243,10 +243,9 @@ class ReversePairWrapper(Dataset):
         return len(self.base)
 
     def __getitem__(self, i: int):
-        idx = self.base.indices[i]
-        rs = self.base.ref_seqs[idx]
-        asq = self.base.alt_seqs[idx]
-        delta = float(self.base.alt_y[idx] - self.base.ref_y[idx])
+        rs = self.base.ref_seqs[i]
+        asq = self.base.alt_seqs[i]
+        delta = float(self.base.alt_y[i] - self.base.ref_y[i])
 
         x_ref = encode_seq(rs, reverse=True, add_reverse_channel=self.base.add_reverse_channel, seq_len=self.base.seq_len)
         x_alt = encode_seq(asq, reverse=True, add_reverse_channel=self.base.add_reverse_channel, seq_len=self.base.seq_len)
