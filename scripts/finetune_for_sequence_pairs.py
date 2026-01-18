@@ -257,6 +257,51 @@ class ReversePairWrapper(Dataset):
         return x_ref, x_alt, y
 
 
+class PairFlippedWrapper(Dataset):
+    """
+    Deterministic wrapper that flips (ref, alt) sequences and negates delta.
+    Use for rc_average at eval-time.
+    """
+    def __init__(self, base: PairDeltaDataset) -> None:
+        self.base = base
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    def __getitem__(self, i: int):
+        rs = self.base.ref_seqs[i]
+        asq = self.base.alt_seqs[i]
+        delta = float(self.base.alt_y[i] - self.base.ref_y[i])
+
+        x_ref = encode_seq(asq, reverse=False, add_reverse_channel=self.base.add_reverse_channel, seq_len=self.base.seq_len)
+        x_alt = encode_seq(rs, reverse=False, add_reverse_channel=self.base.add_reverse_channel, seq_len=self.base.seq_len)
+        y = torch.tensor(-delta, dtype=torch.float32)
+        return x_ref, x_alt, y
+
+
+class PairFlippedReversedWrapper(Dataset):
+    """
+    Deterministic wrapper that flips (ref, alt) sequences, reverse-complements both,
+    and negates delta.
+    Use for rc_average at eval-time.
+    """
+    def __init__(self, base: PairDeltaDataset) -> None:
+        self.base = base
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    def __getitem__(self, i: int):
+        rs = self.base.ref_seqs[i]
+        asq = self.base.alt_seqs[i]
+        delta = float(self.base.alt_y[i] - self.base.ref_y[i])
+
+        x_ref = encode_seq(asq, reverse=True, add_reverse_channel=self.base.add_reverse_channel, seq_len=self.base.seq_len)
+        x_alt = encode_seq(rs, reverse=True, add_reverse_channel=self.base.add_reverse_channel, seq_len=self.base.seq_len)
+        y = torch.tensor(-delta, dtype=torch.float32)
+        return x_ref, x_alt, y
+
+
 # -------------------------
 # Encoder: reuse LegNet as embedding extractor
 # -------------------------
@@ -546,7 +591,29 @@ def eval_delta_model(
     p_fwd, y = predict_delta_loader(model, loader, device, amp=amp)
     p_rev, _ = predict_delta_loader(model, rev_loader, device, amp=amp)
 
-    p = (p_fwd + p_rev) / 2.0
+    # now generate predictions using flipped pairs
+    flipped_ds = PairFlippedWrapper(loader.dataset)
+    flipped_loader = DataLoader(
+        flipped_ds,
+        batch_size=loader.batch_size,
+        shuffle=False,
+        num_workers=loader.num_workers,
+        pin_memory=(device.type == "cuda"),
+    )
+    p_flipped, _ = predict_delta_loader(model, flipped_loader, device, amp=amp)
+
+    flipped_rev_ds = PairFlippedReversedWrapper(loader.dataset)
+    flipped_rev_loader = DataLoader(
+        flipped_rev_ds,
+        batch_size=loader.batch_size,
+        shuffle=False,
+        num_workers=loader.num_workers,
+        pin_memory=(device.type == "cuda"),
+    )
+    p_flipped_rev, _ = predict_delta_loader(model, flipped_rev_loader, device, amp=amp)
+
+    # average all four predictions
+    p = (p_fwd + p_rev + p_flipped + p_flipped_rev) / 4.0
     return {"mse": mse_torch(p, y), "pearson": pearsonr_torch(p, y), "n": int(len(y))}
 
 
