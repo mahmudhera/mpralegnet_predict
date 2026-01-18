@@ -613,7 +613,7 @@ def eval_delta_model(
     p_flipped_rev, _ = predict_delta_loader(model, flipped_rev_loader, device, amp=amp)
 
     # average all four predictions
-    p = (p_fwd + p_rev + p_flipped + p_flipped_rev) / 4.0
+    p = (p_fwd + p_rev - p_flipped - p_flipped_rev) / 4.0
     return {"mse": mse_torch(p, y), "pearson": pearsonr_torch(p, y), "n": int(len(y))}
 
 
