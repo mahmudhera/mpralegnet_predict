@@ -164,8 +164,8 @@ class PairDeltaDataset(Dataset):
     Returns: (x_ref, x_alt, delta)
     - delta = y_alt - y_ref
     Augmentations (train):
-      - flip_pairs: swap (ref,alt) with probability 0.5 and negate delta
-      - rc_pair_augment: reverse-complement BOTH sequences with probability 0.5
+      - flip_pairs: swap (ref,alt) and negate delta
+      - rc_pair_augment: reverse-complement BOTH sequences
     """
     def __init__(
         self,
@@ -977,6 +977,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    print("Arguments:")
+    for arg, value in vars(args).items():
+        print(f"  {arg}: {value}")
+
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
 
@@ -1073,6 +1077,12 @@ def main() -> None:
         rc_pair_augment=bool(args.rc_pair_augment),
         normalize_delta=bool(args.normalize_delta), normalize_mean=train_mean, normalize_std=train_std,
     )
+
+    print("Dataset sizes: ")
+    print(f"  train_ds_ridge: {len(train_ds_ridge)}")
+    print(f"  train_ds_aug: {len(train_ds_aug)}")
+    print(f"  val_ds: {len(val_ds)}")
+    print(f"  test_ds: {len(test_ds)}")
 
     def make_loader(ds: Dataset, shuffle: bool) -> DataLoader:
         return DataLoader(
