@@ -206,7 +206,7 @@ class PairDeltaDataset(Dataset):
             self.delta_mean = float(normalize_mean)
             self.delta_std = float(normalize_std)
         else:
-            deltas = [self.alt_y[i] - self.ref_y[i] for i in self.indices]
+            deltas = [self.alt_y[i] - self.ref_y[i] for i in range(len(self.ref_seqs))]
             self.delta_mean = float(torch.tensor(deltas, dtype=torch.float32).mean().item())
             self.delta_std = float(torch.tensor(deltas, dtype=torch.float32).std().item())
             if self.delta_std < 1e-6:
