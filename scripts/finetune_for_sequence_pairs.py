@@ -183,15 +183,13 @@ class PairDeltaDataset(Dataset):
         normalize_mean: Optional[float] = None,
         normalize_std: Optional[float] = None,
     ) -> None:
-        self.ref_seqs = ref_seqs
-        self.ref_y = ref_y
-        self.alt_seqs = alt_seqs
-        self.alt_y = alt_y
-        self.indices = list(indices)
+        self.ref_seqs = [ref_seqs[i] for i in indices]
+        self.ref_y = [ref_y[i] for i in indices]
+        self.alt_seqs = [alt_seqs[i] for i in indices]
+        self.alt_y = [alt_y[i] for i in indices]
 
         self.seq_len = int(seq_len)
         self.add_reverse_channel = bool(add_reverse_channel)
-
         self.flip_pairs = bool(flip_pairs)
         self.rc_pair_augment = bool(rc_pair_augment)
 
@@ -215,16 +213,15 @@ class PairDeltaDataset(Dataset):
                 raise RuntimeError("Delta standard deviation is too small; cannot normalize.")
 
     def __len__(self) -> int:
-        return len(self.indices)
+        return len(self.ref_seqs)
 
     def get_mean_std_of_deltas(self) -> Tuple[float, float]:
         return self.delta_mean, self.delta_std
 
     def __getitem__(self, i: int):
-        idx = self.indices[i]
-        rs = self.ref_seqs[idx]
-        asq = self.alt_seqs[idx]
-        delta = float(self.alt_y[idx] - self.ref_y[idx])
+        rs = self.ref_seqs[i]
+        asq = self.alt_seqs[i]
+        delta = float(self.alt_y[i] - self.ref_y[i])
         if self.normalize_delta:
             delta = (delta - self.delta_mean) / self.delta_std
 
