@@ -591,29 +591,8 @@ def eval_delta_model(
     p_fwd, y = predict_delta_loader(model, loader, device, amp=amp)
     p_rev, _ = predict_delta_loader(model, rev_loader, device, amp=amp)
 
-    # now generate predictions using flipped pairs
-    flipped_ds = PairFlippedWrapper(loader.dataset)
-    flipped_loader = DataLoader(
-        flipped_ds,
-        batch_size=loader.batch_size,
-        shuffle=False,
-        num_workers=loader.num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-    p_flipped, _ = predict_delta_loader(model, flipped_loader, device, amp=amp)
-
-    flipped_rev_ds = PairFlippedReversedWrapper(loader.dataset)
-    flipped_rev_loader = DataLoader(
-        flipped_rev_ds,
-        batch_size=loader.batch_size,
-        shuffle=False,
-        num_workers=loader.num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-    p_flipped_rev, _ = predict_delta_loader(model, flipped_rev_loader, device, amp=amp)
-
     # average all four predictions
-    p = (p_fwd + p_rev - p_flipped - p_flipped_rev) / 4.0
+    p = (p_fwd + p_rev) / 2.0
     return {"mse": mse_torch(p, y), "pearson": pearsonr_torch(p, y), "n": int(len(y))}
 
 
