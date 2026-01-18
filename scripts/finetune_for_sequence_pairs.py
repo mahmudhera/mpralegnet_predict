@@ -143,6 +143,18 @@ def read_pairs_table(
     return ref_seqs, ref_y, alt_seqs, alt_y
 
 
+def reverse_complement(seq: str) -> str:
+    reverse_map = {
+        "A": "T",
+        "C": "G",
+        "G": "C",
+        "T": "A",
+        "N": "N",
+    }
+    rc = "".join(reverse_map[ch] for ch in reversed(seq))
+    return rc
+
+
 # -------------------------
 # Pair datasets
 # -------------------------
@@ -167,7 +179,6 @@ class PairDeltaDataset(Dataset):
         add_reverse_channel: bool,
         flip_pairs: bool = False,
         rc_pair_augment: bool = False,
-        deterministic: bool = False,
         normalize_delta: bool = False,
         normalize_mean: Optional[float] = None,
         normalize_std: Optional[float] = None,
@@ -184,8 +195,13 @@ class PairDeltaDataset(Dataset):
         self.flip_pairs = bool(flip_pairs)
         self.rc_pair_augment = bool(rc_pair_augment)
 
-        # if deterministic=True, no randomness even if flags enabled
-        self.deterministic = bool(deterministic)
+        if self.rc_pair_augment:
+            ref_seqs_reverse_compement = [reverse_complement(s) for s in self.ref_seqs]
+            alt_seqs_reverse_compement = [reverse_complement(s) for s in self.alt_seqs]
+            self.ref_seqs += alt_seqs + ref_seqs_reverse_compement + alt_seqs_reverse_compement
+            self.ref_y += alt_y + ref_y + alt_y
+            self.alt_seqs += ref_seqs + alt_seqs_reverse_compement + ref_seqs_reverse_compement
+            self.alt_y += ref_y + alt_y + ref_y
 
         self.normalize_delta = bool(normalize_delta)
         if normalize_mean is not None and normalize_std is not None:
@@ -212,20 +228,8 @@ class PairDeltaDataset(Dataset):
         if self.normalize_delta:
             delta = (delta - self.delta_mean) / self.delta_std
 
-        do_flip = False
-        do_rc = False
-        if not self.deterministic:
-            if self.flip_pairs and random.random() < 0.5:
-                do_flip = True
-            if self.rc_pair_augment and random.random() < 0.5:
-                do_rc = True
-
-        if do_flip:
-            rs, asq = asq, rs
-            delta = -delta
-
-        x_ref = encode_seq(rs, reverse=do_rc, add_reverse_channel=self.add_reverse_channel, seq_len=self.seq_len)
-        x_alt = encode_seq(asq, reverse=do_rc, add_reverse_channel=self.add_reverse_channel, seq_len=self.seq_len)
+        x_ref = encode_seq(rs, reverse=False, add_reverse_channel=self.add_reverse_channel, seq_len=self.seq_len)
+        x_alt = encode_seq(asq, reverse=False, add_reverse_channel=self.add_reverse_channel, seq_len=self.seq_len)
         y = torch.tensor(delta, dtype=torch.float32)
         return x_ref, x_alt, y
 
@@ -1039,7 +1043,7 @@ def main() -> None:
     train_ds_ridge = PairDeltaDataset(
         ref_seqs, ref_y, alt_seqs, alt_y, train_idx,
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
-        flip_pairs=False, rc_pair_augment=False, deterministic=True,
+        flip_pairs=False, rc_pair_augment=False,
         normalize_delta=bool(args.normalize_delta), normalize_mean=None, normalize_std=None,
     )
     
@@ -1050,14 +1054,14 @@ def main() -> None:
     val_ds = PairDeltaDataset(
         ref_seqs, ref_y, alt_seqs, alt_y, val_idx,
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
-        flip_pairs=False, rc_pair_augment=False, deterministic=True,
+        flip_pairs=False, rc_pair_augment=False, 
         normalize_delta=bool(args.normalize_delta), normalize_mean=train_mean, normalize_std=train_std,
     )
 
     test_ds = PairDeltaDataset(
         ref_seqs, ref_y, alt_seqs, alt_y, test_idx,
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
-        flip_pairs=False, rc_pair_augment=False, deterministic=True,
+        flip_pairs=False, rc_pair_augment=False,
         normalize_delta=bool(args.normalize_delta),
     )
 
@@ -1067,7 +1071,6 @@ def main() -> None:
         seq_len=seq_len, add_reverse_channel=add_reverse_channel,
         flip_pairs=bool(args.flip_pairs),
         rc_pair_augment=bool(args.rc_pair_augment),
-        deterministic=False,
         normalize_delta=bool(args.normalize_delta), normalize_mean=train_mean, normalize_std=train_std,
     )
 
