@@ -60,6 +60,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+from tqdm.auto import tqdm
 
 # Ensure repo root on sys.path so `import legnet` works without installation.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -658,12 +659,13 @@ def run_siamese(
     best_state = None
     best_score = None
 
-    for epoch in range(1, epochs + 1):
+    for epoch in tqdm(range(1, epochs + 1), desc="[siamese] epochs", leave=True):
         model.train()
         total = 0.0
         n = 0
 
-        for x_ref, x_alt, y in train_loader:
+        pbar = tqdm(train_loader, desc=f"[siamese] train {epoch}/{epochs}", leave=False)
+        for x_ref, x_alt, y in pbar:
             x_ref = x_ref.to(device, non_blocking=True)
             x_alt = x_alt.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
@@ -682,6 +684,8 @@ def run_siamese(
 
             total += float(loss.item()) * int(y.shape[0])
             n += int(y.shape[0])
+            avg_loss = total / max(1, n)
+            pbar.set_postfix({"avg_loss": f"{avg_loss:.6f}"})
 
         train_loss = total / max(1, n)
         va = eval_delta_model(model, val_loader, device, amp=amp, rc_average=rc_average)
@@ -869,24 +873,24 @@ def run_softcls(
     best_state = None
     best_score = None
 
-    for epoch in range(1, epochs + 1):
+    for epoch in tqdm(range(1, epochs + 1), desc="[softcls] epochs", leave=True):
         model.train()
         total = 0.0
         n = 0
 
-        for x_ref, x_alt, y in train_loader:
+        pbar = tqdm(train_loader, desc=f"[softcls] train {epoch}/{epochs}", leave=False)
+        for x_ref, x_alt, y in pbar:
             x_ref = x_ref.to(device, non_blocking=True)
             x_alt = x_alt.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
 
-            # clip y into [delta_min, delta_max] for stable soft labels
             y_clip = y.clamp(min=delta_min, max=delta_max)
 
             opt.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=amp and device.type == "cuda"):
-                logits = model(x_ref, x_alt)  # (B,K)
+                logits = model(x_ref, x_alt)
                 centers_dev = centers.to(device)
-                tgt = soft_targets_gaussian(y_clip, centers_dev, sigma=sigma)  # (B,K)
+                tgt = soft_targets_gaussian(y_clip, centers_dev, sigma=sigma)
                 logp = F.log_softmax(logits, dim=-1)
                 loss = -(tgt * logp).sum(dim=-1).mean()
 
@@ -899,6 +903,8 @@ def run_softcls(
 
             total += float(loss.item()) * int(y.shape[0])
             n += int(y.shape[0])
+            avg_loss = total / max(1, n)
+            pbar.set_postfix({"avg_loss": f"{avg_loss:.6f}"})
 
         train_loss = total / max(1, n)
         va = eval_softcls_model(model, val_loader, device, amp=amp, rc_average=rc_average, centers=centers)
