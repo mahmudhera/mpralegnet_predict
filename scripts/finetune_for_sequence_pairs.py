@@ -1144,24 +1144,21 @@ def main() -> None:
         alt_seq_col=args.alt_seq_col,
         alt_activity_col=args.alt_activity_col,
     )
-    
-    # Filter: remove rows where |ref_y|, |alt_y|, and |delta| are all < 0.05
-    n_pairs_original = len(ref_seqs)
+
+    # Filter: remove rows where |delta| < 0.01
     filtered_indices = []
     for i in range(len(ref_seqs)):
         delta = abs(alt_y[i] - ref_y[i])
-        if not (abs(ref_y[i]) < 0.05 and abs(alt_y[i]) < 0.05 and delta < 0.05):
+        if delta >= 0.01:
             filtered_indices.append(i)
-    
     ref_seqs = [ref_seqs[i] for i in filtered_indices]
     ref_y = [ref_y[i] for i in filtered_indices]
     alt_seqs = [alt_seqs[i] for i in filtered_indices]
     alt_y = [alt_y[i] for i in filtered_indices]
-    
     n_pairs = len(ref_seqs)
-    n_removed = n_pairs_original - n_pairs
-    print(f"Filtered pairs: removed {n_removed} rows (all |ref|, |alt|, |delta| < 0.05)")
-    print(f"  before filtering: {n_pairs_original}, after filtering: {n_pairs}")
+    n_removed = len(ref_seqs) - n_pairs
+    print(f"Filtered pairs: removed {n_removed} rows (|delta| < 0.01)")
+    print(f"  final number of pairs: {n_pairs}")
     
     seq_len = int(args.seq_len)
 
