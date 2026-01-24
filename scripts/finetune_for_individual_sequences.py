@@ -41,6 +41,7 @@ from typing import List, Optional, Tuple
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from legnet import (
     IndexedSequenceRegressionDataset,
@@ -308,7 +309,7 @@ def main() -> None:
     print("Training with:", args.optimizer, "lr=", args.lr, "wd=", args.weight_decay)
     print("Augmentation: rc_augment=", bool(args.rc_augment), "| rc_average(eval)=", bool(args.rc_average))
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in tqdm(range(1, args.epochs + 1), desc="Training epochs", leave=True):
         tr = run_epoch_train(
             model,
             train_loader,
