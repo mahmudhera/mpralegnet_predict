@@ -635,6 +635,7 @@ def run_siamese(
     loss_name: str,
     select_metric: str,
     out_dir: Path,
+    num_gpus: int = 1,
 ) -> Dict:
     # infer embed dim
     encoder.eval()
@@ -655,6 +656,14 @@ def run_siamese(
 
     opt = build_optimizer(optimizer_name, model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
     scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
+
+    # Multi-GPU support
+    if num_gpus > 1 and torch.cuda.is_available() and torch.cuda.device_count() >= num_gpus:
+        device_ids = list(range(num_gpus))
+        model = nn.DataParallel(model, device_ids=device_ids)
+        print(f"[siamese] Using DataParallel with {num_gpus} GPUs: {device_ids}")
+    elif num_gpus > 1:
+        print(f"[siamese] Warning: Requested {num_gpus} GPUs but only {torch.cuda.device_count()} available. Using single GPU.")
 
     best_state = None
     best_score = None
@@ -693,7 +702,9 @@ def run_siamese(
         score = va["pearson"] if select_metric == "pearson" else -va["mse"]
         if best_score is None or score > best_score:
             best_score = score
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            # Handle DataParallel wrapper
+            state_dict = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
+            best_state = {k: v.detach().cpu().clone() for k, v in state_dict.items()}
 
         print(
             f"[siamese] epoch {epoch:03d}/{epochs} | train_loss={train_loss:.6f} "
@@ -701,13 +712,19 @@ def run_siamese(
         )
 
     assert best_state is not None
-    model.load_state_dict(best_state)
+    # Load best state into the correct model (unwrap DataParallel if needed)
+    if isinstance(model, nn.DataParallel):
+        model.module.load_state_dict(best_state)
+    else:
+        model.load_state_dict(best_state)
     te = eval_delta_model(model, test_loader, device, amp=amp, rc_average=rc_average)
 
     out_path = out_dir / "siamese_delta_head.pt"
+    # Save unwrapped state dict
+    state_dict_to_save = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
     torch.save(
         {
-            "state_dict": model.state_dict(),
+            "state_dict": state_dict_to_save,
             "embed_dim": embed_dim,
             "hidden_dim": hidden_dim,
             "dropout": dropout,
@@ -848,6 +865,7 @@ def run_softcls(
     sigma: float,
     select_metric: str,
     out_dir: Path,
+    num_gpus: int = 1,
 ) -> Dict:
     # infer embed dim
     encoder.eval()
@@ -869,6 +887,14 @@ def run_softcls(
 
     opt = build_optimizer(optimizer_name, model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
     scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
+
+    # Multi-GPU support
+    if num_gpus > 1 and torch.cuda.is_available() and torch.cuda.device_count() >= num_gpus:
+        device_ids = list(range(num_gpus))
+        model = nn.DataParallel(model, device_ids=device_ids)
+        print(f"Using DataParallel with {num_gpus} GPUs: {device_ids}")
+    elif num_gpus > 1:
+        print(f"Warning: Requested {num_gpus} GPUs but only {torch.cuda.device_count()} available. Using single GPU.")
 
     best_state = None
     best_score = None
@@ -912,7 +938,9 @@ def run_softcls(
         score = va["pearson"] if select_metric == "pearson" else -va["mse"]
         if best_score is None or score > best_score:
             best_score = score
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            # Handle DataParallel wrapper
+            state_dict = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
+            best_state = {k: v.detach().cpu().clone() for k, v in state_dict.items()}
 
         print(
             f"[softcls] epoch {epoch:03d}/{epochs} | train_loss={train_loss:.6f} "
@@ -920,13 +948,19 @@ def run_softcls(
         )
 
     assert best_state is not None
-    model.load_state_dict(best_state)
+    # Load best state into the correct model (unwrap DataParallel if needed)
+    if isinstance(model, nn.DataParallel):
+        model.module.load_state_dict(best_state)
+    else:
+        model.load_state_dict(best_state)
     te = eval_softcls_model(model, test_loader, device, amp=amp, rc_average=rc_average, centers=centers)
 
     out_path = out_dir / "softcls_delta.pt"
+    # Save unwrapped state dict
+    state_dict_to_save = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
     torch.save(
         {
-            "state_dict": model.state_dict(),
+            "state_dict": state_dict_to_save,
             "embed_dim": embed_dim,
             "hidden_dim": hidden_dim,
             "dropout": dropout,
@@ -1001,6 +1035,8 @@ def main() -> None:
                      help="Eval-time average forward+reverse predictions/embeddings")
     run.add_argument("--flip_pairs", action=argparse.BooleanOptionalAction, default=True,
                      help="Train-time (siamese/softcls) random swap(ref,alt) with label sign flip")
+    run.add_argument("--num_gpus", type=int, default=4,
+                     help="Number of GPUs to use for training (default: 4)")
 
     ridge = parser.add_argument_group("ridge")
     ridge.add_argument("--ridge_alphas", nargs="+", type=float, default=[1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0])
@@ -1226,6 +1262,7 @@ def main() -> None:
             loss_name=args.loss,
             select_metric=args.select_metric,
             out_dir=siamese_dir,
+            num_gpus=int(args.num_gpus),
         )
         all_metrics["siamese"] = m
         print("[siamese] test:", m["test"])
@@ -1256,6 +1293,7 @@ def main() -> None:
             sigma=float(args.sigma),
             select_metric=args.select_metric,
             out_dir=soft_dir,
+            num_gpus=int(args.num_gpus),
         )
         all_metrics["softcls"] = m
         print("[softcls] test:", m["test"])
