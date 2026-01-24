@@ -615,6 +615,27 @@ def build_optimizer(
     raise ValueError(f"Unknown optimizer: {name}")
 
 
+class CauchyLoss(nn.Module):
+    """Cauchy loss (also known as Lorentzian loss): log(1 + (pred - target)^2 / c^2)"""
+    def __init__(self, c: float = 1.0):
+        super().__init__()
+        self.c = c
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        diff = pred - target
+        return torch.log(1 + (diff / self.c) ** 2).mean()
+
+
+class LogCoshLoss(nn.Module):
+    """Log-Cosh loss: log(cosh(pred - target))"""
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        diff = pred - target
+        return torch.log(torch.cosh(diff + 1e-12)).mean()
+
+
 def run_siamese(
     encoder: nn.Module,
     train_loader: DataLoader,
@@ -651,8 +672,14 @@ def run_siamese(
         criterion = nn.MSELoss()
     elif loss_name == "huber":
         criterion = nn.HuberLoss(delta=1.0)
+    elif loss_name == "mae":
+        criterion = nn.L1Loss()
+    elif loss_name == "cauchy":
+        criterion = CauchyLoss(c=1.0)
+    elif loss_name == "logcosh":
+        criterion = LogCoshLoss()
     else:
-        raise ValueError("loss_name must be 'mse' or 'huber'")
+        raise ValueError(f"Unknown loss: {loss_name}. Choose from: mse, huber, mae, cauchy, logcosh")
 
     opt = build_optimizer(optimizer_name, model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
     scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
@@ -1052,7 +1079,7 @@ def main() -> None:
     train.add_argument("--grad_clip", type=float, default=1.0)
     train.add_argument("--hidden_dim", type=int, default=256)
     train.add_argument("--dropout", type=float, default=0.1)
-    train.add_argument("--loss", type=str, default="huber", choices=["mse", "huber"])
+    train.add_argument("--loss", type=str, default="huber", choices=["mse", "huber", "mae", "cauchy", "logcosh"])
 
     enc = parser.add_argument_group("encoder freezing")
     enc.add_argument("--freeze_encoder", action=argparse.BooleanOptionalAction, default=True,
