@@ -527,10 +527,10 @@ class SiameseDeltaHead(nn.Module):
         super().__init__()
         self.encoder = encoder
         self.head = nn.Sequential(
-            nn.Linear(embed_dim, hidden_dim),
+            nn.Linear(embed_dim*3, hidden_dim*3),
             nn.SiLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim*3, hidden_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1),
@@ -541,6 +541,8 @@ class SiameseDeltaHead(nn.Module):
         h_ref = self.encoder(x_ref)
         h_alt = self.encoder(x_alt)
         d = h_alt - h_ref
+        # also concat h_ref and h_alt for more info
+        d = torch.cat([h_ref, h_alt, d], dim=-1)
         return self.head(d).squeeze(-1)
 
 
