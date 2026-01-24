@@ -617,6 +617,39 @@ def build_optimizer(
     raise ValueError(f"Unknown optimizer: {name}")
 
 
+def build_scheduler(
+    name: str,
+    optimizer: torch.optim.Optimizer,
+    *,
+    epochs: int,
+    select_metric: str,
+) -> Optional[torch.optim.lr_scheduler._LRScheduler]:
+    """
+    Create LR scheduler by name. For ReduceLROnPlateau, returns the scheduler object
+    but note it requires a metric passed to .step(metric) each epoch.
+    Other schedulers use .step() per epoch.
+    """
+    name = name.lower()
+    if name == "none":
+        return None
+    if name == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=int(epochs))
+    if name == "linear":
+        # Linear decay from start_factor=1.0 to end_factor=0.0 over 'epochs' epochs.
+        return torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=int(epochs))
+    if name == "reduce_on_plateau":
+        mode = "max" if select_metric == "pearson" else "min"
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode=mode,
+            factor=0.5,
+            patience=3,
+            min_lr=1e-7,
+            verbose=True,
+        )
+    raise ValueError(f"Unknown scheduler: {name}")
+
+
 class CauchyLoss(nn.Module):
     """Cauchy loss (also known as Lorentzian loss): log(1 + (pred - target)^2 / c^2)"""
     def __init__(self, c: float = 1.0):
@@ -656,6 +689,7 @@ def run_siamese(
     hidden_dim: int,
     dropout: float,
     loss_name: str,
+    scheduler_name: str,
     select_metric: str,
     out_dir: Path,
     num_gpus: int = 1,
@@ -684,6 +718,7 @@ def run_siamese(
         raise ValueError(f"Unknown loss: {loss_name}. Choose from: mse, huber, mae, cauchy, logcosh")
 
     opt = build_optimizer(optimizer_name, model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
+    sched = build_scheduler(scheduler_name, opt, epochs=epochs, select_metric=select_metric)
     scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
 
     # Multi-GPU support
@@ -735,9 +770,17 @@ def run_siamese(
             state_dict = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
             best_state = {k: v.detach().cpu().clone() for k, v in state_dict.items()}
 
+        # Step scheduler
+        if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            metric_value = va["pearson"] if select_metric == "pearson" else va["mse"]
+            sched.step(metric_value)
+        elif sched is not None:
+            sched.step()
+
+        current_lr = float(opt.param_groups[0]["lr"])
         print(
             f"[siamese] epoch {epoch:03d}/{epochs} | train_loss={train_loss:.6f} "
-            f"| val_mse={va['mse']:.6f} val_pearson={va['pearson']:.4f}"
+            f"| val_mse={va['mse']:.6f} val_pearson={va['pearson']:.4f} | lr={current_lr:.6f}"
         )
 
     assert best_state is not None
@@ -770,6 +813,7 @@ def run_siamese(
         "test": te,
         "rc_average": bool(rc_average),
         "select_metric": select_metric,
+        "scheduler": scheduler_name,
         "saved_model": str(out_path),
     }
     with (out_dir / "metrics_siamese.json").open("w") as f:
@@ -892,6 +936,7 @@ def run_softcls(
     delta_min: float,
     delta_max: float,
     sigma: float,
+    scheduler_name: str,
     select_metric: str,
     out_dir: Path,
     num_gpus: int = 1,
@@ -915,6 +960,7 @@ def run_softcls(
     ).to(device)
 
     opt = build_optimizer(optimizer_name, model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
+    sched = build_scheduler(scheduler_name, opt, epochs=epochs, select_metric=select_metric)
     scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
 
     # Multi-GPU support
@@ -971,9 +1017,17 @@ def run_softcls(
             state_dict = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
             best_state = {k: v.detach().cpu().clone() for k, v in state_dict.items()}
 
+        # Step scheduler
+        if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            metric_value = va["pearson"] if select_metric == "pearson" else va["mse"]
+            sched.step(metric_value)
+        elif sched is not None:
+            sched.step()
+
+        current_lr = float(opt.param_groups[0]["lr"])
         print(
             f"[softcls] epoch {epoch:03d}/{epochs} | train_loss={train_loss:.6f} "
-            f"| val_mse={va['mse']:.6f} val_pearson={va['pearson']:.4f}"
+            f"| val_mse={va['mse']:.6f} val_pearson={va['pearson']:.4f} | lr={current_lr:.6f}"
         )
 
     assert best_state is not None
@@ -1011,6 +1065,7 @@ def run_softcls(
         "test": te,
         "rc_average": bool(rc_average),
         "select_metric": select_metric,
+        "scheduler": scheduler_name,
         "num_bins": num_bins,
         "delta_min": delta_min,
         "delta_max": delta_max,
@@ -1082,6 +1137,9 @@ def main() -> None:
     train.add_argument("--hidden_dim", type=int, default=256)
     train.add_argument("--dropout", type=float, default=0.1)
     train.add_argument("--loss", type=str, default="huber", choices=["mse", "huber", "mae", "cauchy", "logcosh"])
+    train.add_argument("--scheduler", type=str, default="none",
+                       choices=["none", "cosine", "reduce_on_plateau", "linear"],
+                       help="Learning rate scheduler: none|cosine|reduce_on_plateau|linear")
 
     enc = parser.add_argument_group("encoder freezing")
     enc.add_argument("--freeze_encoder", action=argparse.BooleanOptionalAction, default=True,
@@ -1304,6 +1362,7 @@ def main() -> None:
             hidden_dim=int(args.hidden_dim),
             dropout=float(args.dropout),
             loss_name=args.loss,
+            scheduler_name=args.scheduler,
             select_metric=args.select_metric,
             out_dir=siamese_dir,
             num_gpus=int(args.num_gpus),
@@ -1335,6 +1394,7 @@ def main() -> None:
             delta_min=float(args.delta_min),
             delta_max=float(args.delta_max),
             sigma=float(args.sigma),
+            scheduler_name=args.scheduler,
             select_metric=args.select_metric,
             out_dir=soft_dir,
             num_gpus=int(args.num_gpus),
