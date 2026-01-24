@@ -309,15 +309,46 @@ def main() -> None:
     print("Training with:", args.optimizer, "lr=", args.lr, "wd=", args.weight_decay)
     print("Augmentation: rc_augment=", bool(args.rc_augment), "| rc_average(eval)=", bool(args.rc_average))
 
+    scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
+
     for epoch in tqdm(range(1, args.epochs + 1), desc="Training epochs", leave=True):
-        tr = run_epoch_train(
-            model,
-            train_loader,
-            optimizer,
-            device,
-            amp=args.amp,
-            grad_clip=args.grad_clip,
-        )
+        model.train()
+        total_loss = 0.0
+        n = 0
+
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}", leave=False)
+        for x, y in pbar:
+            x = x.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+
+            optimizer.zero_grad(set_to_none=True)
+            with torch.cuda.amp.autocast(enabled=args.amp):
+                pred = model(x)
+                loss = torch.nn.functional.mse_loss(pred, y)
+
+            scaler.scale(loss).backward()
+
+            if args.grad_clip is not None and args.grad_clip > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+
+            scaler.step(optimizer)
+            scaler.update()
+
+            bs = x.shape[0]
+            total_loss += float(loss.detach().item()) * bs
+            n += bs
+            avg_loss = total_loss / max(1, n)
+            pbar.set_postfix({"avg_loss": f"{avg_loss:.6f}"})
+
+        tr_loss = total_loss / max(1, n)
+        
+        class _TrainStats:
+            def __init__(self, loss, n):
+                self.loss = loss
+                self.n = n
+        
+        tr = _TrainStats(loss=tr_loss, n=n)
 
         # Evaluate (forward only)
         va = eval_regression(model, val_loader, device, amp=args.amp)
