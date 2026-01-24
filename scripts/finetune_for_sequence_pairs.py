@@ -194,18 +194,6 @@ class PairDeltaDataset(Dataset):
         self.flip_pairs = bool(flip_pairs)
         self.rc_pair_augment = bool(rc_pair_augment)
 
-        if self.rc_pair_augment:
-            ref_seqs = self.ref_seqs.copy()
-            ref_y = self.ref_y.copy()
-            alt_seqs = self.alt_seqs.copy()
-            alt_y = self.alt_y.copy()
-            ref_seqs_reverse_compement = [reverse_complement(s) for s in self.ref_seqs]
-            alt_seqs_reverse_compement = [reverse_complement(s) for s in self.alt_seqs]
-            self.ref_seqs += alt_seqs + ref_seqs_reverse_compement + alt_seqs_reverse_compement
-            self.ref_y += alt_y + ref_y + alt_y
-            self.alt_seqs += ref_seqs + alt_seqs_reverse_compement + ref_seqs_reverse_compement
-            self.alt_y += ref_y + alt_y + ref_y
-
         self.normalize_delta = bool(normalize_delta)
         if normalize_mean is not None and normalize_std is not None:
             self.delta_mean = float(normalize_mean)
@@ -229,6 +217,18 @@ class PairDeltaDataset(Dataset):
         delta = float(self.alt_y[i] - self.ref_y[i])
         if self.normalize_delta:
             delta = (delta - self.delta_mean) / self.delta_std
+
+        # Apply augmentations: with 50% probability, flip pairs
+        do_flip = self.flip_pairs and (random.random() < 0.5)
+        if do_flip:
+            rs, asq = asq, rs
+            delta = -delta
+
+        # Apply augmentations: with 50% probability, reverse-complement both
+        do_rc = self.rc_pair_augment and (random.random() < 0.5)
+        if do_rc:
+            rs = reverse_complement(rs)
+            asq = reverse_complement(asq)
 
         x_ref = encode_seq(rs, reverse=False, add_reverse_channel=self.add_reverse_channel, seq_len=self.seq_len)
         x_alt = encode_seq(asq, reverse=False, add_reverse_channel=self.add_reverse_channel, seq_len=self.seq_len)
