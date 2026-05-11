@@ -325,6 +325,8 @@ def main() -> None:
     ref_ids: Optional[List[str]] = None
     model_names: List[str] = []
     preds_by_model: List[torch.Tensor] = []
+    preds_forw_by_model: List[torch.Tensor] = []
+    preds_rev_by_model: List[torch.Tensor] = []
 
     for ckpt_path in ckpt_paths:
         model, meta = load_model(ckpt_path, config, map_location="cpu", device=device, strict=False)
@@ -337,6 +339,8 @@ def main() -> None:
             if out_ids2 != out_ids:
                 raise RuntimeError("Internal error: ID order mismatch between forward and reverse loaders")
             p = (p_forw + p_rev) / 2.0
+            preds_forw_by_model.append(p_forw)
+            preds_rev_by_model.append(p_rev)
         else:
             p = p_forw
 
@@ -359,6 +363,8 @@ def main() -> None:
     # Write output once, including the ensemble mean and each checkpoint's predictions.
     mean_values = preds.reshape(-1).tolist()
     per_model_values = [pred.reshape(-1).tolist() for pred in preds_by_model]
+    per_model_forw_values = [pred.reshape(-1).tolist() for pred in preds_forw_by_model]
+    per_model_rev_values = [pred.reshape(-1).tolist() for pred in preds_rev_by_model]
 
     with out_path.open("w", newline="") as f:
         w = csv.writer(f, delimiter="\t")
@@ -367,6 +373,9 @@ def main() -> None:
             header.append("sequence")
         header.append("prediction")
         header.extend(f"prediction_{name}" for name in model_names)
+        if args.rc_average:
+            header.extend(f"prediction_{name}_fwd" for name in model_names)
+            header.extend(f"prediction_{name}_rev" for name in model_names)
         w.writerow(header)
 
         for row_idx, _id in enumerate(out_ids):
@@ -375,6 +384,9 @@ def main() -> None:
                 row.append(seqs[row_idx])
             row.append(mean_values[row_idx])
             row.extend(values[row_idx] for values in per_model_values)
+            if args.rc_average:
+                row.extend(values[row_idx] for values in per_model_forw_values)
+                row.extend(values[row_idx] for values in per_model_rev_values)
             w.writerow(row)
 
     print("Saved:", out_path)
