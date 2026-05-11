@@ -246,7 +246,9 @@ def main() -> None:
 
     input_path = Path(args.input)
     out_path = Path(args.output)
-    out_path.parent.mkdir(parents=True, exist_ok=True)    # Resolve ensemble checkpoint directory + config (config.json must be inside)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Resolve ensemble checkpoint directory + config (config.json must be inside).
     ckpt_dir = Path(args.checkpoint_dir)
     if not ckpt_dir.is_dir():
         raise SystemExit(f"--checkpoint_dir is not a directory: {ckpt_dir}")
@@ -321,6 +323,8 @@ def main() -> None:
 
     preds_sum: Optional[torch.Tensor] = None
     ref_ids: Optional[List[str]] = None
+    model_names: List[str] = []
+    preds_by_model: List[torch.Tensor] = []
 
     for ckpt_path in ckpt_paths:
         model, meta = load_model(ckpt_path, config, map_location="cpu", device=device, strict=False)
@@ -336,6 +340,9 @@ def main() -> None:
         else:
             p = p_forw
 
+        model_names.append(ckpt_path.stem)
+        preds_by_model.append(p)
+
         if ref_ids is None:
             ref_ids = out_ids
         elif out_ids != ref_ids:
@@ -343,43 +350,52 @@ def main() -> None:
 
         preds_sum = p if preds_sum is None else (preds_sum + p)
 
-        if preds_sum is None or ref_ids is None:
-            raise RuntimeError("No predictions produced (no checkpoints?)")
+    if preds_sum is None or ref_ids is None:
+        raise RuntimeError("No predictions produced (no checkpoints?)")
 
-        preds = preds_sum / float(len(ckpt_paths))
-        out_ids = ref_ids
+    preds = preds_sum / float(len(ckpt_paths))
+    out_ids = ref_ids
 
-        # Write output
-        with out_path.open("w", newline="") as f:
-            w = csv.writer(f, delimiter="\t")
-            header = ["id", "prediction"]
+    # Write output once, including the ensemble mean and each checkpoint's predictions.
+    mean_values = preds.reshape(-1).tolist()
+    per_model_values = [pred.reshape(-1).tolist() for pred in preds_by_model]
+
+    with out_path.open("w", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        header = ["id"]
+        if args.write_seq:
+            header.append("sequence")
+        header.append("prediction")
+        header.extend(f"prediction_{name}" for name in model_names)
+        w.writerow(header)
+
+        for row_idx, _id in enumerate(out_ids):
+            row = [_id]
             if args.write_seq:
-                header = ["id", "sequence", "prediction"]
-            w.writerow(header)
-            if args.write_seq:
-                for _id, seq, pred in zip(out_ids, seqs, preds.tolist()):
-                    w.writerow([_id, seq, pred])
-            else:
-                for _id, pred in zip(out_ids, preds.tolist()):
-                    w.writerow([_id, pred])
+                row.append(seqs[row_idx])
+            row.append(mean_values[row_idx])
+            row.extend(values[row_idx] for values in per_model_values)
+            w.writerow(row)
 
-        print("Saved:", out_path)
-        print("Loaded checkpoint:", ckpt_path)
-        if config_path is not None:
-            print("Loaded config:", config_path)
-        print("Checkpoint key prefix used:", meta.get("used_prefix"))
-        if meta.get("missing_keys"):
-            print("Warning: missing keys:")
-            for k in meta["missing_keys"][:20]:
-                print("  ", k)
-            if len(meta["missing_keys"]) > 20:
-                print(f"  ... ({len(meta['missing_keys'])} total)")
-        if meta.get("unexpected_keys"):
-            print("Warning: unexpected keys:")
-            for k in meta["unexpected_keys"][:20]:
-                print("  ", k)
-            if len(meta["unexpected_keys"]) > 20:
-                print(f"  ... ({len(meta['unexpected_keys'])} total)")
+    print("Saved:", out_path)
+    print("Loaded checkpoints:")
+    for ckpt_path in ckpt_paths:
+        print("  ", ckpt_path)
+    if config_path is not None:
+        print("Loaded config:", config_path)
+    print("Checkpoint key prefix used:", meta.get("used_prefix"))
+    if meta.get("missing_keys"):
+        print("Warning: missing keys:")
+        for k in meta["missing_keys"][:20]:
+            print("  ", k)
+        if len(meta["missing_keys"]) > 20:
+            print(f"  ... ({len(meta['missing_keys'])} total)")
+    if meta.get("unexpected_keys"):
+        print("Warning: unexpected keys:")
+        for k in meta["unexpected_keys"][:20]:
+            print("  ", k)
+        if len(meta["unexpected_keys"]) > 20:
+            print(f"  ... ({len(meta['unexpected_keys'])} total)")
 
 
 if __name__ == "__main__":
